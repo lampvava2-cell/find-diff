@@ -59,7 +59,7 @@
   <div class="overlay" id="startOverlay">
     <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
     <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 은색(2방), 금색(3방)</p>
-    <p style="color: #4cd964; font-size: 13px;">캡슐 아이템: 관통볼, 멀티볼, 패들확장</p>
+    <p style="color: #ff0055; font-size: 13px;">[G] 캡슐 획득 시 혜성 화염구 관통 모드!</p>
     <button class="btn" onclick="startGame()">게임 시작</button>
   </div>
 
@@ -70,10 +70,8 @@
   </div>
 
   <script>
-    // --- 1. 효과음 엔진 (시작 사운드 WAV + 인게임 칩튠 사운드) ---
+    // --- 1. Web Audio 사운드 ---
     let audioCtx = null;
-
-    // 업로드할 시작 오디오 객체
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
 
@@ -90,9 +88,7 @@
     function playStartWav() {
       try {
         startAudio.currentTime = 0;
-        startAudio.play().catch(() => {
-          // start.wav 파일이 없거나 브라우저 제한 시 무시
-        });
+        startAudio.play().catch(() => {});
       } catch (e) {}
     }
 
@@ -235,7 +231,15 @@
     }
 
     function createBall(x, y, dx, dy) {
-      return { x, y, dx, dy, speed: BASE_BALL_SPEED, hitCooldown: 0 };
+      return {
+        x: x,
+        y: y,
+        dx: dx,
+        dy: dy,
+        speed: BASE_BALL_SPEED,
+        hitCooldown: 0,
+        trail: [] // 불꽃 잔상을 기록할 배열
+      };
     }
 
     function resetToSingleBall() {
@@ -244,7 +248,7 @@
 
     function startGame() {
       initAudio();
-      playStartWav(); // 게임 시작 시 WAV 효과음 재생
+      playStartWav();
 
       score = 0;
       lives = 3;
@@ -308,7 +312,7 @@
       }
     }
 
-    // --- 3. 물리 및 충돌 로직 ---
+    // --- 3. 물리 및 충돌 업데이트 ---
     function update() {
       if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
       if (activeEffects.expandTimer > 0) {
@@ -321,6 +325,15 @@
 
       for (let i = balls.length - 1; i >= 0; i--) {
         const ball = balls[i];
+
+        // 혜성 꼬리 좌표 수집 (무적 상태일 때 최대 14개 프레임 기록)
+        if (isGiant) {
+          ball.trail.unshift({ x: ball.x, y: ball.y });
+          if (ball.trail.length > 14) ball.trail.pop();
+        } else {
+          ball.trail = [];
+        }
+
         ball.x += ball.dx;
         ball.y += ball.dy;
         if (ball.hitCooldown > 0) ball.hitCooldown--;
@@ -447,7 +460,7 @@
       return b.baseColor;
     }
 
-    // --- 4. 렌더링 (순수 종횡비 유지 + 블랙 레터박스) ---
+    // --- 4. 렌더링 (혜성 꼬리 화염 파티클 렌더링 탑재) ---
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -496,8 +509,8 @@
       ctx.fillText(`LIVES: ${'● '.repeat(lives)}`, GAME_W - 105, 18);
 
       if (activeEffects.giantPierceTimer > 0) {
-        ctx.fillStyle = '#ff0055';
-        ctx.fillText(`[PIERCE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 38);
+        ctx.fillStyle = '#ff3300';
+        ctx.fillText(`[COMET FIRE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 38);
       } else if (activeEffects.expandTimer > 0) {
         ctx.fillStyle = '#39ff14';
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 38);
@@ -532,16 +545,49 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
+      // --- [혜성 불꽃 공 & 꼬리 잔상 렌더링] ---
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
       for (let ball of balls) {
+        if (isGiant && ball.trail.length > 0) {
+          // 1. 꼬리 잔상 (뒤쪽일수록 작아지고 붉은색->노란색으로 그러데이션 감쇄)
+          for (let t = ball.trail.length - 1; t >= 0; t--) {
+            const p = ball.trail[t];
+            const ratio = 1 - (t / ball.trail.length); // 앞쪽일수록 1, 뒤쪽일수록 0
+            const trailR = r * (0.35 + ratio * 0.55);
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, trailR, 0, Math.PI * 2);
+            // 꼬리 색상: 뒤는 투명한 흑적색, 앞쪽은 강렬한 오렌지/옐로우
+            ctx.fillStyle = `rgba(255, ${Math.floor(140 * ratio)}, 0, ${ratio * 0.6})`;
+            ctx.shadowColor = '#ff2200';
+            ctx.shadowBlur = 10 * ratio;
+            ctx.fill();
+          }
+        }
+
+        // 2. 본체 공 드로잉
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = isGiant ? '#ff0055' : '#ffffff';
-        ctx.shadowColor = isGiant ? '#ff0000' : '#00ffff';
-        ctx.shadowBlur = isGiant ? 14 : 6;
-        ctx.fill();
+        if (isGiant) {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ff3300';
+          ctx.shadowBlur = 18;
+          ctx.fill();
+
+          // 화염구 외곽 림 라이트 오버레이
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, r * 1.15, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 80, 0, 0.7)';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#00ffff';
+          ctx.shadowBlur = 6;
+          ctx.fill();
+        }
         ctx.shadowBlur = 0;
       }
 
