@@ -29,26 +29,28 @@
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
       overflow: hidden;
     }
+    /* 유튜브 영상 레이어: 빈 공간은 순수 Black(#000000)으로 채움 */
     #ytPlayerWrapper {
       position: absolute;
-      top: 5.625%;
-      left: 3.333%;
-      width: 93.334%;
-      height: 94.375%;
+      top: 5.625%;    /* 36 / 640 */
+      left: 3.333%;   /* 12 / 360 */
+      width: 93.334%; /* 336 / 360 */
+      height: 94.375%;/* 604 / 640 */
       background-color: #000000;
       display: flex;
       justify-content: center;
       align-items: center;
       overflow: hidden;
       z-index: 1;
-      pointer-events: none;
+      pointer-events: none; /* 터치가 게임 캔버스로만 가도록 차단 */
     }
+    /* 16:9 비율 유지 (영상 잘림 없음) */
     #ytBox {
       position: relative;
       width: 100%;
       height: 0;
       padding-bottom: 56.25%;
-      background: #000;
+      background: #000000;
     }
     #ytBox iframe, #ytPlayer {
       position: absolute;
@@ -57,7 +59,7 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
-      filter: brightness(0.68) contrast(1.05);
+      filter: brightness(0.68) contrast(1.05); /* 게임 오브젝트 시인성 확보 */
     }
     #gameCanvas {
       position: absolute;
@@ -96,6 +98,7 @@
 <body>
 
   <div id="gameContainer">
+    <!-- 유튜브 라이브 영상 배경 (레터박스 Black) -->
     <div id="ytPlayerWrapper">
       <div id="ytBox">
         <div id="ytPlayer"></div>
@@ -118,22 +121,22 @@
   </div>
 
   <script>
-    // --- 1. 유튜브 플레이어 API 연동 ---
+    // --- 1. 유튜브 플레이어 컨트롤러 ---
     let ytPlayer = null;
-    const TARGET_VIDEO_ID = 'a3q2dPG3lVI';
+    const TARGET_VIDEO_ID = 'a3q2dPG3lVI'; // 홍대거리 라이브 비디오 ID
 
     function onYouTubeIframeAPIReady() {
       ytPlayer = new YT.Player('ytPlayer', {
         videoId: TARGET_VIDEO_ID,
         playerVars: {
           autoplay: 1,
-          mute: 1,
-          controls: 0,
+          mute: 1,            // 모바일 자동재생 정책 필수 음소거
+          controls: 0,        // 플레이어 UI 숨김
           disablekb: 1,
           fs: 0,
           rel: 0,
           modestbranding: 1,
-          playsinline: 1,
+          playsinline: 1,     // 모바일 인라인 재생
           loop: 1,
           playlist: TARGET_VIDEO_ID
         },
@@ -153,7 +156,7 @@
       }
     }
 
-    // --- 2. 오디오 FX 엔진 ---
+    // --- 2. 오디오 FX 엔진 (Web Audio API) ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -236,7 +239,7 @@
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 3. 캔버스 및 10개 스테이지 맵 데이터 정의 ---
+    // --- 3. 캔버스 및 10개 스테이지 맵 데이터 ---
     const container = document.getElementById('gameContainer');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -282,8 +285,7 @@
     let balls = [];
     let particles = [];
     const BASE_BALL_R = 4.5;
-    
-    // 스테이지별 기준 속도 (스테이지가 올라갈수록 점진적 가속)
+
     function getStageBaseSpeed() {
       return 4.6 + (currentStage - 1) * 0.22;
     }
@@ -307,10 +309,10 @@
 
     let bricks = [];
 
-    // [10개 고유 스테이지 맵 생성 엔진]
-    // 0: 빈칸, 1: RED, 2: ORANGE, 3: YELLOW, 4: GREEN, 5: BLUE, S: SILVER(2방), G: GOLD(3방), C: GLASS(크리스탈)
+    // [10개 고유 스테이지 맵 데이터]
+    // 0:빈칸, 1:빨강, 2:주황, 3:노랑, 4:초록, 5:파랑, S:실버(2방), G:골드(3방), C:크리스탈(유리)
     const STAGE_MAPS = [
-      // Stage 1: Classic Standard Wall
+      // 1: 기본 벽돌
       [
         "GGGGGGGGGGG",
         "SSSSSSSSSSS",
@@ -320,7 +322,7 @@
         "44444444444",
         "55555555555"
       ],
-      // Stage 2: Pyramid
+      // 2: 피라미드
       [
         "00000G00000",
         "0000SSS0000",
@@ -330,7 +332,7 @@
         "33333333333",
         "44444444444"
       ],
-      // Stage 3: Diamond Gateway
+      // 3: 다이아몬드 관문
       [
         "00000S00000",
         "000SC0CS000",
@@ -340,7 +342,7 @@
         "000SC0CS000",
         "00000S00000"
       ],
-      // Stage 4: Space Invader
+      // 4: 인베이더
       [
         "00100000100",
         "00010001000",
@@ -350,7 +352,7 @@
         "10111111101",
         "10100000101"
       ],
-      // Stage 5: The Castle Fortress
+      // 5: 캐슬 요새
       [
         "G0G0G0G0G0G",
         "S0S0S0S0S0S",
@@ -360,7 +362,7 @@
         "00033333000",
         "00044444000"
       ],
-      // Stage 6: Crystal Heart
+      // 6: 크리스탈 하트
       [
         "01100000110",
         "1CC10001CC1",
@@ -370,7 +372,7 @@
         "0001CCCC1000",
         "000001100000"
       ],
-      // Stage 7: Checkerboard Matrix
+      // 7: 체커보드 매트릭스
       [
         "S0S0S0S0S0S",
         "0C0C0C0C0C0",
@@ -380,7 +382,7 @@
         "04040404040",
         "50505050505"
       ],
-      // Stage 8: Skull of Doom
+      // 8: 스컬 오브 둠
       [
         "000SSSSS000",
         "00S11111S00",
@@ -390,7 +392,7 @@
         "000CCCCC000",
         "000S0S0S000"
       ],
-      // Stage 9: Twin Pillars of Eternity
+      // 9: 트윈 필러
       [
         "GG0000000GG",
         "SS000C000SS",
@@ -400,7 +402,7 @@
         "SS0044400SS",
         "GG000C000GG"
       ],
-      // Stage 10: Final Core Nexus (BOSSFIGHT)
+      // 10: 최종 보스 코어 넥서스
       [
         "GGGGGGGGGGG",
         "GSSSSSSSSSG",
@@ -540,7 +542,7 @@
     function nextStageTransition() {
       stageClearPause = true;
       sound.stageClear();
-      score += currentStage * 500; // 스테이지 클리어 보너스 점수
+      score += currentStage * 500;
 
       setTimeout(() => {
         currentStage++;
@@ -549,7 +551,6 @@
           return;
         }
 
-        // 다음 스테이지 준비
         activeEffects.giantPierceTimer = 0;
         activeEffects.expandTimer = 0;
         paddle.w = PADDLE_DEFAULT_W;
@@ -567,7 +568,7 @@
       isPlaying = false;
       overTitle.textContent = "ALL CLEAR! CHAMPION";
       overTitle.style.color = "#ffd700";
-      finalScore.textContent = `축하합니다! 최종 점수: ${score}`;
+      finalScore.textContent = `축하합니다! 전 스테이지 클리어 | 점수: ${score}`;
       overBtn.textContent = "처음부터 다시하기";
       gameOverOverlay.style.display = 'flex';
     }
@@ -627,7 +628,7 @@
       }
     }
 
-    // --- 4. 물리 업데이트 ---
+    // --- 4. 물리 및 판정 업데이트 ---
     function update() {
       if (stageClearPause) return;
       frameCount++;
@@ -766,7 +767,7 @@
         if (it.y > GAME_H) items.splice(i, 1);
       }
 
-      // 현재 스테이지의 모든 벽돌 파괴 시 다음 스테이지로
+      // 스테이지 내 모든 벽돌 파괴 시 전환
       if (bricks.every(b => b.hp <= 0)) {
         nextStageTransition();
       }
@@ -803,7 +804,7 @@
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, 24);
 
-      // HUD 표시 (스테이지 번호 추가)
+      // HUD 표시
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
@@ -820,9 +821,9 @@
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 48);
       }
 
-      // 스테이지 클리어 전환 메시지
+      // 스테이지 클리어 연출
       if (stageClearPause) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fillRect(20, GAME_H / 2 - 35, GAME_W - 40, 70);
         ctx.fillStyle = '#4cd964';
         ctx.font = 'bold 20px Courier New';
