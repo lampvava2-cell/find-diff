@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>알카노이드 FX</title>
+  <title>알카노이드 FX - 10 STAGES</title>
   <style>
     * {
       box-sizing: border-box;
@@ -29,13 +29,12 @@
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
       overflow: hidden;
     }
-    /* 유튜브 영상 전체 뷰 영역: 남는 공간은 순수 Black 배경 */
     #ytPlayerWrapper {
       position: absolute;
-      top: 5.625%;    /* 36 / 640 */
-      left: 3.333%;   /* 12 / 360 */
-      width: 93.334%; /* 336 / 360 */
-      height: 94.375%;/* 604 / 640 */
+      top: 5.625%;
+      left: 3.333%;
+      width: 93.334%;
+      height: 94.375%;
       background-color: #000000;
       display: flex;
       justify-content: center;
@@ -44,12 +43,11 @@
       z-index: 1;
       pointer-events: none;
     }
-    /* 16:9 원본 영상 전체가 잘림 없이 들어가도록 contain 비율 설정 */
     #ytBox {
       position: relative;
       width: 100%;
       height: 0;
-      padding-bottom: 56.25%; /* 16:9 비율 유지 */
+      padding-bottom: 56.25%;
       background: #000;
     }
     #ytBox iframe, #ytPlayer {
@@ -59,7 +57,7 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
-      filter: brightness(0.7) contrast(1.05); /* 게임 오브젝트 가독성을 위한 최적 밝기 */
+      filter: brightness(0.68) contrast(1.05);
     }
     #gameCanvas {
       position: absolute;
@@ -98,7 +96,6 @@
 <body>
 
   <div id="gameContainer">
-    <!-- 레터박스(Black)와 원본 비율 전체 영상 레이어 -->
     <div id="ytPlayerWrapper">
       <div id="ytBox">
         <div id="ytPlayer"></div>
@@ -109,7 +106,7 @@
 
   <div class="overlay" id="startOverlay">
     <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
-    <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 골드(3방), 실버(2방), 크리스탈 글래스</p>
+    <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">총 10개 스테이지 돌파 도전!</p>
     <p style="color: #ff0055; font-size: 13px;">[G] 캡슐: 혜성 화염 관통 모드</p>
     <button class="btn" onclick="startGame()">게임 시작</button>
   </div>
@@ -117,11 +114,11 @@
   <div class="overlay" id="gameOverOverlay" style="display: none;">
     <h1 id="overTitle" style="color: #ff3333;">GAME OVER</h1>
     <p id="finalScore" style="font-size: 16px;">점수: 0</p>
-    <button class="btn" onclick="startGame()">다시하기</button>
+    <button class="btn" id="overBtn" onclick="restartGame()">다시하기</button>
   </div>
 
   <script>
-    // --- 1. 유튜브 IFrame 플레이어 컨트롤 ---
+    // --- 1. 유튜브 플레이어 API 연동 ---
     let ytPlayer = null;
     const TARGET_VIDEO_ID = 'a3q2dPG3lVI';
 
@@ -156,7 +153,7 @@
       }
     }
 
-    // --- 2. 사운드 FX 엔진 ---
+    // --- 2. 오디오 FX 엔진 ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -230,10 +227,16 @@
         setTimeout(() => playTone(600, 'square', 0.08, null, 0.2), 70);
         setTimeout(() => playTone(800, 'square', 0.14, null, 0.2), 140);
       },
+      stageClear: () => {
+        playTone(523, 'triangle', 0.1, null, 0.2);
+        setTimeout(() => playTone(659, 'triangle', 0.1, null, 0.2), 100);
+        setTimeout(() => playTone(784, 'triangle', 0.15, null, 0.2), 200);
+        setTimeout(() => playTone(1046, 'triangle', 0.3, null, 0.25), 300);
+      },
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 3. 캔버스 및 레이아웃 설정 ---
+    // --- 3. 캔버스 및 10개 스테이지 맵 데이터 정의 ---
     const container = document.getElementById('gameContainer');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -241,6 +244,7 @@
     const gameOverOverlay = document.getElementById('gameOverOverlay');
     const overTitle = document.getElementById('overTitle');
     const finalScore = document.getElementById('finalScore');
+    const overBtn = document.getElementById('overBtn');
 
     const GAME_W = 360;
     const GAME_H = 640;
@@ -262,8 +266,11 @@
 
     let score = 0;
     let lives = 3;
+    let currentStage = 1;
+    const MAX_STAGES = 10;
     let isPlaying = false;
     let frameCount = 0;
+    let stageClearPause = false;
 
     const PADDLE_DEFAULT_W = 68;
     const paddle = {
@@ -275,7 +282,11 @@
     let balls = [];
     let particles = [];
     const BASE_BALL_R = 4.5;
-    const BASE_BALL_SPEED = 4.8;
+    
+    // 스테이지별 기준 속도 (스테이지가 올라갈수록 점진적 가속)
+    function getStageBaseSpeed() {
+      return 4.6 + (currentStage - 1) * 0.22;
+    }
 
     let items = [];
     const ITEM_TYPES = [
@@ -288,44 +299,159 @@
       expandTimer: 0
     };
 
-    const BRICK_ROWS = 7;
     const BRICK_COLS = 11;
     const BRICK_W = 28;
     const BRICK_H = 12;
-    const BRICK_TOP = 80;
+    const BRICK_TOP = 75;
     const BRICK_LEFT = (GAME_W - (BRICK_COLS * BRICK_W)) / 2;
 
     let bricks = [];
-    function initBricks() {
+
+    // [10개 고유 스테이지 맵 생성 엔진]
+    // 0: 빈칸, 1: RED, 2: ORANGE, 3: YELLOW, 4: GREEN, 5: BLUE, S: SILVER(2방), G: GOLD(3방), C: GLASS(크리스탈)
+    const STAGE_MAPS = [
+      // Stage 1: Classic Standard Wall
+      [
+        "GGGGGGGGGGG",
+        "SSSSSSSSSSS",
+        "CCCCCCCCCCC",
+        "22222222222",
+        "33333333333",
+        "44444444444",
+        "55555555555"
+      ],
+      // Stage 2: Pyramid
+      [
+        "00000G00000",
+        "0000SSS0000",
+        "000CCCCC000",
+        "00111111100",
+        "02222222220",
+        "33333333333",
+        "44444444444"
+      ],
+      // Stage 3: Diamond Gateway
+      [
+        "00000S00000",
+        "000SC0CS000",
+        "00S11011S00",
+        "0S2220222S0",
+        "00S33033S00",
+        "000SC0CS000",
+        "00000S00000"
+      ],
+      // Stage 4: Space Invader
+      [
+        "00100000100",
+        "00010001000",
+        "00111111100",
+        "01101110110",
+        "11111111111",
+        "10111111101",
+        "10100000101"
+      ],
+      // Stage 5: The Castle Fortress
+      [
+        "G0G0G0G0G0G",
+        "S0S0S0S0S0S",
+        "SSSSSSSSSSS",
+        "C0C0C0C0C0C",
+        "22222222222",
+        "00033333000",
+        "00044444000"
+      ],
+      // Stage 6: Crystal Heart
+      [
+        "01100000110",
+        "1CC10001CC1",
+        "1CCCC11CCCC1",
+        "01CCCCCCCC10",
+        "001CCCCCC100",
+        "0001CCCC1000",
+        "000001100000"
+      ],
+      // Stage 7: Checkerboard Matrix
+      [
+        "S0S0S0S0S0S",
+        "0C0C0C0C0C0",
+        "10101010101",
+        "02020202020",
+        "30303030303",
+        "04040404040",
+        "50505050505"
+      ],
+      // Stage 8: Skull of Doom
+      [
+        "000SSSSS000",
+        "00S11111S00",
+        "0S1011101S0",
+        "0S1111111S0",
+        "00S10101S00",
+        "000CCCCC000",
+        "000S0S0S000"
+      ],
+      // Stage 9: Twin Pillars of Eternity
+      [
+        "GG0000000GG",
+        "SS000C000SS",
+        "CC0011100CC",
+        "11002220011",
+        "22003330022",
+        "SS0044400SS",
+        "GG000C000GG"
+      ],
+      // Stage 10: Final Core Nexus (BOSSFIGHT)
+      [
+        "GGGGGGGGGGG",
+        "GSSSSSSSSSG",
+        "GSCCCCCCCSS",
+        "GSC00G00CSG",
+        "GSC0GGG0CSG",
+        "GSCCCCCCCSS",
+        "GGGGGGGGGGG"
+      ]
+    ];
+
+    function loadStage(stageNum) {
       bricks = [];
-      for (let r = 0; r < BRICK_ROWS; r++) {
+      const map = STAGE_MAPS[stageNum - 1];
+      const rows = map.length;
+
+      for (let r = 0; r < rows; r++) {
+        const rowStr = map[r];
         for (let c = 0; c < BRICK_COLS; c++) {
+          const char = rowStr[c] || '0';
+          if (char === '0') continue;
+
           let maxHp = 1;
           let color = '#e52521';
           let type = 'RED';
 
-          if (r === 0) {
+          if (char === 'G') {
             maxHp = 3;
             color = '#ffd700';
             type = 'GOLD';
-          } else if (r === 1) {
+          } else if (char === 'S') {
             maxHp = 2;
             color = '#c0c0c0';
             type = 'SILVER';
-          } else if (r === 2) {
+          } else if (char === 'C') {
             maxHp = 1;
             color = '#7df9ff';
             type = 'GLASS';
-          } else if (r === 3) {
+          } else if (char === '1') {
+            color = '#e52521';
+            type = 'RED';
+          } else if (char === '2') {
             color = '#ff5f00';
             type = 'ORANGE';
-          } else if (r === 4) {
+          } else if (char === '3') {
             color = '#fbd100';
             type = 'YELLOW';
-          } else if (r === 5) {
+          } else if (char === '4') {
             color = '#009a44';
             type = 'GREEN';
-          } else {
+          } else if (char === '5') {
             color = '#0070ec';
             type = 'BLUE';
           }
@@ -363,19 +489,23 @@
     }
 
     function createBall(x, y, dx, dy) {
+      const spd = getStageBaseSpeed();
       return {
         x: x,
         y: y,
         dx: dx,
         dy: dy,
-        speed: BASE_BALL_SPEED,
+        speed: spd,
         hitCooldown: 0,
         trail: []
       };
     }
 
     function resetToSingleBall() {
-      balls = [createBall(paddle.x + paddle.w / 2, paddle.y - 12, (Math.random() > 0.5 ? 1 : -1) * 3, -3.8)];
+      const spd = getStageBaseSpeed();
+      const dirX = (Math.random() > 0.5 ? 1 : -1) * (spd * 0.6);
+      const dirY = -Math.sqrt(Math.max(4, spd * spd - dirX * dirX));
+      balls = [createBall(paddle.x + paddle.w / 2, paddle.y - 12, dirX, dirY)];
     }
 
     function startGame() {
@@ -385,6 +515,8 @@
 
       score = 0;
       lives = 3;
+      currentStage = 1;
+      stageClearPause = false;
       items = [];
       particles = [];
       activeEffects.giantPierceTimer = 0;
@@ -392,7 +524,7 @@
       paddle.w = PADDLE_DEFAULT_W;
       paddle.x = GAME_W / 2 - paddle.w / 2;
 
-      initBricks();
+      loadStage(currentStage);
       resetToSingleBall();
 
       startOverlay.style.display = 'none';
@@ -401,8 +533,56 @@
       requestAnimationFrame(loop);
     }
 
+    function restartGame() {
+      startGame();
+    }
+
+    function nextStageTransition() {
+      stageClearPause = true;
+      sound.stageClear();
+      score += currentStage * 500; // 스테이지 클리어 보너스 점수
+
+      setTimeout(() => {
+        currentStage++;
+        if (currentStage > MAX_STAGES) {
+          gameEndVictory();
+          return;
+        }
+
+        // 다음 스테이지 준비
+        activeEffects.giantPierceTimer = 0;
+        activeEffects.expandTimer = 0;
+        paddle.w = PADDLE_DEFAULT_W;
+        paddle.x = GAME_W / 2 - paddle.w / 2;
+        items = [];
+        particles = [];
+
+        loadStage(currentStage);
+        resetToSingleBall();
+        stageClearPause = false;
+      }, 1200);
+    }
+
+    function gameEndVictory() {
+      isPlaying = false;
+      overTitle.textContent = "ALL CLEAR! CHAMPION";
+      overTitle.style.color = "#ffd700";
+      finalScore.textContent = `축하합니다! 최종 점수: ${score}`;
+      overBtn.textContent = "처음부터 다시하기";
+      gameOverOverlay.style.display = 'flex';
+    }
+
+    function gameOver() {
+      isPlaying = false;
+      overTitle.textContent = "GAME OVER";
+      overTitle.style.color = "#ff3333";
+      finalScore.textContent = `도달 스테이지: ${currentStage} | 최종 점수: ${score}`;
+      overBtn.textContent = "다시하기";
+      gameOverOverlay.style.display = 'flex';
+    }
+
     function handleTouch(e) {
-      if (!isPlaying) return;
+      if (!isPlaying || stageClearPause) return;
       const rect = canvas.getBoundingClientRect();
       const scaleX = GAME_W / rect.width;
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -435,8 +615,9 @@
       if (type === 'MULTI') {
         if (balls.length > 0) {
           const b = balls[0];
-          balls.push(createBall(b.x, b.y, -3.2, -3.2));
-          balls.push(createBall(b.x, b.y, 3.2, -3.2));
+          const spd = getStageBaseSpeed();
+          balls.push(createBall(b.x, b.y, -spd * 0.7, -spd * 0.7));
+          balls.push(createBall(b.x, b.y, spd * 0.7, -spd * 0.7));
         }
       } else if (type === 'GIANT_PIERCE') {
         activeEffects.giantPierceTimer = 480;
@@ -446,9 +627,11 @@
       }
     }
 
-    // --- 4. 물리 및 판정 업데이트 ---
+    // --- 4. 물리 업데이트 ---
     function update() {
+      if (stageClearPause) return;
       frameCount++;
+
       if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
       if (activeEffects.expandTimer > 0) {
         activeEffects.expandTimer--;
@@ -506,8 +689,9 @@
           ball.dy > 0
         ) {
           const hitPos = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
-          ball.dx = hitPos * 4.6;
-          ball.dy = -Math.sqrt(Math.max(4, ball.speed * ball.speed - ball.dx * ball.dx));
+          const spd = ball.speed;
+          ball.dx = hitPos * (spd * 0.9);
+          ball.dy = -Math.sqrt(Math.max(4, spd * spd - ball.dx * ball.dx));
           ball.y = paddle.y - currentRadius;
           sound.hitPaddle();
         }
@@ -556,7 +740,7 @@
         activeEffects.expandTimer = 0;
         paddle.w = PADDLE_DEFAULT_W;
         if (lives <= 0) {
-          gameOver(false);
+          gameOver();
           return;
         } else {
           resetToSingleBall();
@@ -582,17 +766,10 @@
         if (it.y > GAME_H) items.splice(i, 1);
       }
 
+      // 현재 스테이지의 모든 벽돌 파괴 시 다음 스테이지로
       if (bricks.every(b => b.hp <= 0)) {
-        gameOver(true);
+        nextStageTransition();
       }
-    }
-
-    function gameOver(win) {
-      isPlaying = false;
-      overTitle.textContent = win ? "ROUND CLEAR!" : "GAME OVER";
-      overTitle.style.color = win ? "#4cd964" : "#ff3333";
-      finalScore.textContent = `최종 점수: ${score}`;
-      gameOverOverlay.style.display = 'flex';
     }
 
     function getBrickColor(b) {
@@ -616,7 +793,7 @@
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 상단 및 좌우 메탈 프레임
+      // 상단 및 측면 메탈 프레임
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
@@ -626,10 +803,12 @@
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, 24);
 
-      // HUD
+      // HUD 표시 (스테이지 번호 추가)
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(`ROUND ${currentStage}`, 145, 18);
       ctx.fillStyle = '#e60012';
       ctx.fillText(`LIVES: ${'● '.repeat(lives)}`, GAME_W - 105, 18);
 
@@ -641,7 +820,18 @@
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 48);
       }
 
-      // 벽돌
+      // 스테이지 클리어 전환 메시지
+      if (stageClearPause) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(20, GAME_H / 2 - 35, GAME_W - 40, 70);
+        ctx.fillStyle = '#4cd964';
+        ctx.font = 'bold 20px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(`STAGE ${currentStage} CLEAR!`, GAME_W / 2, GAME_H / 2 + 6);
+        ctx.textAlign = 'left';
+      }
+
+      // 벽돌 렌더링
       for (let b of bricks) {
         if (b.hp <= 0) continue;
         if (b.type === 'GLASS') {
