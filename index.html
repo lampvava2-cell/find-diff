@@ -58,8 +58,8 @@
 
   <div class="overlay" id="startOverlay">
     <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
-    <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 은색(2방), 금색(3방)</p>
-    <p style="color: #ff0055; font-size: 13px;">[G] 캡슐 획득 시 혜성 화염구 관통 모드!</p>
+    <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 골드(3방), 실버(2방), 크리스탈 글래스</p>
+    <p style="color: #ff0055; font-size: 13px;">[G] 캡슐: 혜성 화염 관통 모드</p>
     <button class="btn" onclick="startGame()">게임 시작</button>
   </div>
 
@@ -70,7 +70,7 @@
   </div>
 
   <script>
-    // --- 1. Web Audio 사운드 ---
+    // --- 1. 색상별 맞춤 오디오 엔진 (Web Audio API) ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -92,7 +92,7 @@
       } catch (e) {}
     }
 
-    function playTone(freq, type, duration, endFreq = null) {
+    function playTone(freq, type, duration, endFreq = null, vol = 0.15) {
       if (!audioCtx) return;
       try {
         const osc = audioCtx.createOscillator();
@@ -105,7 +105,7 @@
           osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
         }
 
-        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.setValueAtTime(vol, now);
         gain.gain.linearRampToValueAtTime(0.01, now + duration);
 
         osc.connect(gain);
@@ -116,19 +116,40 @@
       } catch (e) {}
     }
 
+    // 블록 속성 및 색상에 따른 음색 분기
     const sound = {
-      hitBrick: (isSpecial) => playTone(isSpecial ? 280 : 540, 'square', 0.08, isSpecial ? 180 : 800),
-      hitPaddle: () => playTone(220, 'triangle', 0.12, 110),
-      hitWall: () => playTone(440, 'sine', 0.04),
-      powerUp: () => {
-        playTone(400, 'square', 0.08);
-        setTimeout(() => playTone(600, 'square', 0.08), 70);
-        setTimeout(() => playTone(800, 'square', 0.14), 140);
+      hitBrickByType: (type, isDestroyed) => {
+        if (type === 'GOLD') {
+          playTone(220, 'square', 0.12, isDestroyed ? 90 : 160, 0.22);
+        } else if (type === 'SILVER') {
+          playTone(340, 'triangle', 0.1, isDestroyed ? 140 : 260, 0.2);
+        } else if (type === 'GLASS') {
+          // 크리스탈/유리: 맑고 영롱한 고주파 차임
+          playTone(1050, 'sine', 0.18, 1400, 0.25);
+          setTimeout(() => playTone(1580, 'sine', 0.12, 1900, 0.18), 30);
+        } else if (type === 'RED') {
+          playTone(440, 'square', 0.08, 520, 0.15); // A4
+        } else if (type === 'ORANGE') {
+          playTone(494, 'square', 0.08, 580, 0.15); // B4
+        } else if (type === 'YELLOW') {
+          playTone(554, 'square', 0.08, 660, 0.15); // C#5
+        } else if (type === 'GREEN') {
+          playTone(659, 'square', 0.08, 780, 0.15); // E5
+        } else {
+          playTone(740, 'square', 0.08, 880, 0.15); // F#5
+        }
       },
-      loseLife: () => playTone(250, 'sawtooth', 0.35, 40)
+      hitPaddle: () => playTone(220, 'triangle', 0.12, 110, 0.2),
+      hitWall: () => playTone(440, 'sine', 0.04, null, 0.08),
+      powerUp: () => {
+        playTone(400, 'square', 0.08, null, 0.2);
+        setTimeout(() => playTone(600, 'square', 0.08, null, 0.2), 70);
+        setTimeout(() => playTone(800, 'square', 0.14, null, 0.2), 140);
+      },
+      loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 2. 화면 구성 및 이미지 로드 ---
+    // --- 2. 캔버스 및 게임 설정 ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const startOverlay = document.getElementById('startOverlay');
@@ -160,6 +181,7 @@
     let score = 0;
     let lives = 3;
     let isPlaying = false;
+    let frameCount = 0; // 반짝임 애니메이션 타이머용
 
     const PADDLE_DEFAULT_W = 68;
     const paddle = {
@@ -170,6 +192,7 @@
     };
 
     let balls = [];
+    let particles = []; // 블록 파편 파티클 목록
     const BASE_BALL_R = 4.5;
     const BASE_BALL_SPEED = 4.8;
 
@@ -200,21 +223,33 @@
         for (let c = 0; c < BRICK_COLS; c++) {
           let maxHp = 1;
           let color = '#e52521';
+          let type = 'RED';
 
           if (r === 0) {
             maxHp = 3;
             color = '#ffd700';
-          } else if (r === 1 || r === 2) {
+            type = 'GOLD';
+          } else if (r === 1) {
             maxHp = 2;
             color = '#c0c0c0';
+            type = 'SILVER';
+          } else if (r === 2) {
+            // 3번째 줄: 반짝이는 크리스탈 유리 블록
+            maxHp = 1;
+            color = '#7df9ff';
+            type = 'GLASS';
           } else if (r === 3) {
             color = '#ff5f00';
+            type = 'ORANGE';
           } else if (r === 4) {
             color = '#fbd100';
+            type = 'YELLOW';
           } else if (r === 5) {
             color = '#009a44';
+            type = 'GREEN';
           } else {
             color = '#0070ec';
+            type = 'BLUE';
           }
 
           bricks.push({
@@ -224,9 +259,29 @@
             h: BRICK_H - 1.5,
             hp: maxHp,
             maxHp: maxHp,
-            baseColor: color
+            baseColor: color,
+            type: type
           });
         }
+      }
+    }
+
+    // 블록 폭발 파편 생성
+    function spawnExplosion(x, y, w, h, color, isGlass) {
+      const count = isGlass ? 20 : 14;
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x + w / 2,
+          y: y + h / 2,
+          vx: (Math.random() - 0.5) * 8.5,
+          vy: (Math.random() - 0.8) * 7.5,
+          size: Math.random() * 3.5 + 2.0,
+          color: color,
+          alpha: 1.0,
+          rot: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.3,
+          isGlass: isGlass
+        });
       }
     }
 
@@ -238,7 +293,7 @@
         dy: dy,
         speed: BASE_BALL_SPEED,
         hitCooldown: 0,
-        trail: [] // 불꽃 잔상을 기록할 배열
+        trail: []
       };
     }
 
@@ -253,6 +308,7 @@
       score = 0;
       lives = 3;
       items = [];
+      particles = [];
       activeEffects.giantPierceTimer = 0;
       activeEffects.expandTimer = 0;
       paddle.w = PADDLE_DEFAULT_W;
@@ -312,8 +368,10 @@
       }
     }
 
-    // --- 3. 물리 및 충돌 업데이트 ---
+    // --- 3. 물리 및 파티클 업데이트 ---
     function update() {
+      frameCount++;
+
       if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
       if (activeEffects.expandTimer > 0) {
         activeEffects.expandTimer--;
@@ -323,10 +381,23 @@
       const isGiant = activeEffects.giantPierceTimer > 0;
       const currentRadius = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
+      // 파티클 물리 (중력 + 회전 + 페이드아웃)
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.24; // 중력 가속도
+        p.rot += p.vRot;
+        p.alpha -= 0.024;
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+
+      // 공 물리
       for (let i = balls.length - 1; i >= 0; i--) {
         const ball = balls[i];
 
-        // 혜성 꼬리 좌표 수집 (무적 상태일 때 최대 14개 프레임 기록)
         if (isGiant) {
           ball.trail.unshift({ x: ball.x, y: ball.y });
           if (ball.trail.length > 14) ball.trail.pop();
@@ -367,6 +438,7 @@
           sound.hitPaddle();
         }
 
+        // 벽돌 충돌 및 파괴
         for (let b of bricks) {
           if (b.hp <= 0) continue;
 
@@ -379,7 +451,8 @@
             if (isGiant) {
               b.hp = 0;
               score += 20;
-              sound.hitBrick(false);
+              sound.hitBrickByType(b.type, true);
+              spawnExplosion(b.x, b.y, b.w, b.h, getBrickColor(b), b.type === 'GLASS');
               maybeSpawnItem(b.x, b.y);
             } else {
               if (ball.hitCooldown === 0) {
@@ -387,8 +460,12 @@
                 score += 10;
                 ball.dy = -ball.dy;
                 ball.hitCooldown = 3;
-                sound.hitBrick(b.hp > 0);
-                if (b.hp <= 0) maybeSpawnItem(b.x, b.y);
+                const destroyed = b.hp <= 0;
+                sound.hitBrickByType(b.type, destroyed);
+                if (destroyed) {
+                  spawnExplosion(b.x, b.y, b.w, b.h, getBrickColor(b), b.type === 'GLASS');
+                  maybeSpawnItem(b.x, b.y);
+                }
               }
               break;
             }
@@ -448,19 +525,19 @@
     }
 
     function getBrickColor(b) {
-      if (b.maxHp === 3) {
+      if (b.type === 'GOLD') {
         if (b.hp === 3) return '#ffd700';
         if (b.hp === 2) return '#cd7f32';
         return '#654321';
       }
-      if (b.maxHp === 2) {
+      if (b.type === 'SILVER') {
         if (b.hp === 2) return '#dcdcdc';
         return '#708090';
       }
       return b.baseColor;
     }
 
-    // --- 4. 렌더링 (혜성 꼬리 화염 파티클 렌더링 탑재) ---
+    // --- 4. 렌더링 ---
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -468,40 +545,34 @@
       ctx.save();
       ctx.scale(scale, scale);
 
+      // 1. 배경 및 레터박스
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, GAME_H);
 
-      const playArea = {
-        x: 12,
-        y: 36,
-        w: GAME_W - 24,
-        h: GAME_H - 36
-      };
-
+      const playArea = { x: 12, y: 36, w: GAME_W - 24, h: GAME_H - 36 };
       ctx.fillRect(playArea.x, playArea.y, playArea.w, playArea.h);
 
       if (bgLoaded && bgImg.naturalWidth > 0) {
         const imgW = bgImg.naturalWidth;
         const imgH = bgImg.naturalHeight;
-
         const scaleFit = Math.min(playArea.w / imgW, playArea.h / imgH);
         const finalW = imgW * scaleFit;
         const finalH = imgH * scaleFit;
-
         const finalX = playArea.x + (playArea.w - finalW) / 2;
         const finalY = playArea.y + (playArea.h - finalH) / 2;
 
         ctx.drawImage(bgImg, finalX, finalY, finalW, finalH);
-
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.fillRect(finalX, finalY, finalW, finalH);
       }
 
+      // 2. 외곽 메탈 프레임
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
       ctx.fillRect(0, 24, GAME_W, 12);
 
+      // 3. HUD
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
@@ -516,16 +587,63 @@
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 38);
       }
 
+      // 4. 벽돌 그리기
       for (let b of bricks) {
         if (b.hp <= 0) continue;
-        ctx.fillStyle = getBrickColor(b);
-        ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.fillRect(b.x, b.y, b.w, 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+
+        if (b.type === 'GLASS') {
+          // [유리 크리스탈 블록 렌더링]
+          ctx.fillStyle = 'rgba(125, 249, 255, 0.55)';
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+
+          // 다이아몬드/유리 테두리 광택
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+
+          // 실시간 빛 스침 애니메이션 (Shine Glint)
+          const sweep = (frameCount * 2.5 + b.x * 2) % 180;
+          if (sweep < b.w + 10) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(b.x, b.y, b.w, b.h);
+            ctx.clip();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            ctx.beginPath();
+            ctx.moveTo(b.x + sweep - 6, b.y + b.h);
+            ctx.lineTo(b.x + sweep + 4, b.y);
+            ctx.lineTo(b.x + sweep + 8, b.y);
+            ctx.lineTo(b.x + sweep - 2, b.y + b.h);
+            ctx.fill();
+            ctx.restore();
+          }
+        } else {
+          // 일반/메탈 블록
+          ctx.fillStyle = getBrickColor(b);
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.fillRect(b.x, b.y, b.w, 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+        }
       }
 
+      // 5. 폭발 파편 파티클 렌더링
+      for (let p of particles) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        if (p.isGlass) {
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 6;
+        }
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.restore();
+      }
+
+      // 6. 캡슐 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -540,26 +658,25 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
+      // 7. 패들
       ctx.fillStyle = activeEffects.expandTimer > 0 ? '#39ff14' : '#e52521';
       ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
-      // --- [혜성 불꽃 공 & 꼬리 잔상 렌더링] ---
+      // 8. 공 (화염 혜성 잔상 포함)
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
       for (let ball of balls) {
         if (isGiant && ball.trail.length > 0) {
-          // 1. 꼬리 잔상 (뒤쪽일수록 작아지고 붉은색->노란색으로 그러데이션 감쇄)
           for (let t = ball.trail.length - 1; t >= 0; t--) {
-            const p = ball.trail[t];
-            const ratio = 1 - (t / ball.trail.length); // 앞쪽일수록 1, 뒤쪽일수록 0
+            const pt = ball.trail[t];
+            const ratio = 1 - (t / ball.trail.length);
             const trailR = r * (0.35 + ratio * 0.55);
 
             ctx.beginPath();
-            ctx.arc(p.x, p.y, trailR, 0, Math.PI * 2);
-            // 꼬리 색상: 뒤는 투명한 흑적색, 앞쪽은 강렬한 오렌지/옐로우
+            ctx.arc(pt.x, pt.y, trailR, 0, Math.PI * 2);
             ctx.fillStyle = `rgba(255, ${Math.floor(140 * ratio)}, 0, ${ratio * 0.6})`;
             ctx.shadowColor = '#ff2200';
             ctx.shadowBlur = 10 * ratio;
@@ -567,7 +684,6 @@
           }
         }
 
-        // 2. 본체 공 드로잉
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2);
         if (isGiant) {
@@ -576,7 +692,6 @@
           ctx.shadowBlur = 18;
           ctx.fill();
 
-          // 화염구 외곽 림 라이트 오버레이
           ctx.beginPath();
           ctx.arc(ball.x, ball.y, r * 1.15, 0, Math.PI * 2);
           ctx.strokeStyle = 'rgba(255, 80, 0, 0.7)';
@@ -591,6 +706,7 @@
         ctx.shadowBlur = 0;
       }
 
+      // 9. 하단 컨트롤 가이드 라인
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
