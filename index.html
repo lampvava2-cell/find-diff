@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>틀린그림찾기</title>
+  <title>알카노이드 EX</title>
   <style>
     * {
       box-sizing: border-box;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: manipulation;
+      touch-action: none;
     }
     html, body {
       margin: 0;
@@ -17,238 +17,499 @@
       width: 100vw;
       height: 100vh;
       overflow: hidden;
-      background-color: #0b0b0b;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    .hud {
-      position: absolute;
-      top: env(safe-area-inset-top, 8px);
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 20;
-    }
-    .badge {
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(4px);
-      color: #fff;
-      padding: 6px 18px;
-      border-radius: 20px;
-      font-size: 15px;
-      font-weight: 700;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .badge span {
-      color: #ff3b30;
-      font-size: 17px;
-    }
-    .screen-container {
-      width: 100vw;
-      height: 100vh;
+      background-color: #050508;
       display: flex;
-      flex-direction: row;
-      align-items: center;
       justify-content: center;
-      padding: env(safe-area-inset-top, 4px) env(safe-area-inset-right, 6px) env(safe-area-inset-bottom, 4px) env(safe-area-inset-left, 6px);
-      gap: 6px;
-    }
-    .image-slot {
-      position: relative;
-      flex: 1;
-      height: 100%;
-      display: flex;
       align-items: center;
-      justify-content: center;
-      overflow: hidden;
+      font-family: 'Courier New', Courier, monospace;
     }
-    .image-frame {
-      position: relative;
-      display: inline-block;
-      max-width: 100%;
-      max-height: 100%;
-      line-height: 0;
-      border-radius: 4px;
-      overflow: hidden;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
-      border: 1px solid #222;
-      background: #000;
-    }
-    .image-frame img {
+    #gameCanvas {
+      background-color: #000;
       display: block;
-      max-width: 100%;
-      max-height: 98vh;
-      width: auto;
-      height: auto;
-      object-fit: contain;
-      pointer-events: none;
-    }
-    .marker {
-      position: absolute;
-      width: 44px;
-      height: 44px;
-      border: 3.5px solid #ff2b54;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      box-shadow: 0 0 8px rgba(255, 43, 84, 0.8);
-      animation: pop 0.2s ease-out;
-    }
-    @keyframes pop {
-      0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
-      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    }
-    .miss {
-      position: absolute;
-      width: 24px;
-      height: 24px;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      font-size: 22px;
-      color: #ff3b30;
-      font-weight: 900;
-      animation: fadeOut 0.45s ease-out forwards;
-    }
-    @keyframes fadeOut {
-      0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-      100% { opacity: 0; transform: translate(-50%, -70%) scale(0.8); }
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
     }
     .overlay {
-      position: fixed;
+      position: absolute;
       inset: 0;
       background: rgba(0, 0, 0, 0.85);
-      display: none;
+      display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-      z-index: 100;
-      color: white;
-      text-align: center;
+      color: #fff;
+      z-index: 10;
     }
-    .modal-box {
-      background: #1c1c1e;
-      padding: 24px 36px;
-      border-radius: 14px;
-      border: 1px solid #333;
-    }
-    .btn-restart {
-      margin-top: 14px;
-      padding: 10px 24px;
-      font-size: 15px;
-      background: #007aff;
-      color: white;
+    .btn {
+      margin-top: 18px;
+      padding: 12px 30px;
+      font-size: 18px;
+      font-weight: bold;
+      background: #e60012;
+      color: #fff;
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      font-weight: bold;
     }
   </style>
 </head>
 <body>
 
-  <div class="hud">
-    <div class="badge">남은 틀린 곳: <span id="remaining-count">5</span></div>
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="overlay" id="startOverlay">
+    <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID EX</h1>
+    <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 은색(2방), 금색(3방)</p>
+    <p style="color: #4cd964; font-size: 13px;">캡슐 아이템: 관통볼, 멀티볼, 패들확장</p>
+    <button class="btn" onclick="startGame()">게임 시작</button>
   </div>
 
-  <div class="screen-container">
-    <div class="image-slot">
-      <div class="image-frame" id="frame-a">
-        <img src="aaa.jpg" id="img-a" alt="원본" />
-      </div>
-    </div>
-    <div class="image-slot">
-      <div class="image-frame" id="frame-b">
-        <img src="bbb.jpg" id="img-b" alt="틀린그림" />
-      </div>
-    </div>
-  </div>
-
-  <div class="overlay" id="clear-overlay">
-    <div class="modal-box">
-      <h2>🎉 CLEAR!</h2>
-      <p>모든 틀린 부분을 전부 찾았습니다!</p>
-      <button class="btn-restart" onclick="restartGame()">다시하기</button>
-    </div>
+  <div class="overlay" id="gameOverOverlay" style="display: none;">
+    <h1 id="overTitle" style="color: #ff3333;">GAME OVER</h1>
+    <p id="finalScore" style="font-size: 16px;">점수: 0</p>
+    <button class="btn" onclick="startGame()">다시하기</button>
   </div>
 
   <script>
-    const TARGET_CONFIG = [
-      { id: 1, x: 81.8, y: 19.5, radius: 7.0, found: false },
-      { id: 2, x: 43.1, y: 49.3, radius: 7.0, found: false },
-      { id: 3, x: 17.5, y: 52.8, radius: 7.0, found: false },
-      { id: 4, x: 17.8, y: 93.6, radius: 7.0, found: false },
-      { id: 5, x: 77.2, y: 86.8, radius: 7.0, found: false }
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const overTitle = document.getElementById('overTitle');
+    const finalScore = document.getElementById('finalScore');
+
+    const GAME_W = 360;
+    const GAME_H = 640;
+
+    function resizeCanvas() {
+      const scale = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
+      canvas.width = GAME_W * scale;
+      canvas.height = GAME_H * scale;
+      ctx.imageSmoothingEnabled = false;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // 배경 이미지 로드 (bg.jpg)
+    const bgImg = new Image();
+    let bgLoaded = false;
+    bgImg.src = 'bg.jpg';
+    bgImg.onload = () => { bgLoaded = true; };
+
+    let score = 0;
+    let lives = 3;
+    let isPlaying = false;
+
+    // 패들 기본 설정 (화면 하단에서 135px 띄움)
+    const PADDLE_DEFAULT_W = 68;
+    const paddle = {
+      w: PADDLE_DEFAULT_W,
+      h: 14,
+      x: GAME_W / 2 - 34,
+      y: GAME_H - 135
+    };
+
+    // 공 목록 (멀티볼 지원)
+    let balls = [];
+    const BASE_BALL_R = 4.5;
+    const BASE_BALL_SPEED = 4.8;
+
+    // 파워업 아이템 관리
+    let items = [];
+    const ITEM_TYPES = [
+      { type: 'MULTI', label: 'M', color: '#00ffff' },      // 공 3개 분열
+      { type: 'GIANT_PIERCE', label: 'G', color: '#ff0055' },// 거대 관통볼
+      { type: 'EXPAND', label: 'E', color: '#39ff14' }       // 패들 확장
     ];
 
-    let targets = JSON.parse(JSON.stringify(TARGET_CONFIG));
+    // 파워업 지속 타이머 상태
+    let activeEffects = {
+      giantPierceTimer: 0,
+      expandTimer: 0
+    };
 
-    const frameA = document.getElementById('frame-a');
-    const frameB = document.getElementById('frame-b');
-    const remainingEl = document.getElementById('remaining-count');
-    const clearOverlay = document.getElementById('clear-overlay');
+    // 벽돌 레이아웃 설정 (7행 11열)
+    const BRICK_ROWS = 7;
+    const BRICK_COLS = 11;
+    const BRICK_W = 28;
+    const BRICK_H = 12;
+    const BRICK_TOP = 80;
+    const BRICK_LEFT = (GAME_W - (BRICK_COLS * BRICK_W)) / 2;
 
-    function updateRemaining() {
-      const remaining = targets.filter(t => !t.found).length;
-      remainingEl.textContent = remaining;
-      if (remaining === 0) {
-        setTimeout(() => {
-          clearOverlay.style.display = 'flex';
-        }, 300);
+    let bricks = [];
+
+    function initBricks() {
+      bricks = [];
+      for (let r = 0; r < BRICK_ROWS; r++) {
+        for (let c = 0; c < BRICK_COLS; c++) {
+          let maxHp = 1;
+          let color = '#e52521';
+
+          if (r === 0) {
+            // 맨 윗줄: 3번 때려야 깨지는 골드 벽돌
+            maxHp = 3;
+            color = '#ffd700';
+          } else if (r === 1 || r === 2) {
+            // 2, 3번째 줄: 2번 때려야 깨지는 실버 벽돌
+            maxHp = 2;
+            color = '#c0c0c0';
+          } else if (r === 3) {
+            color = '#ff5f00';
+          } else if (r === 4) {
+            color = '#fbd100';
+          } else if (r === 5) {
+            color = '#009a44';
+          } else {
+            color = '#0070ec';
+          }
+
+          bricks.push({
+            x: BRICK_LEFT + c * BRICK_W,
+            y: BRICK_TOP + r * BRICK_H,
+            w: BRICK_W - 1.5,
+            h: BRICK_H - 1.5,
+            hp: maxHp,
+            maxHp: maxHp,
+            baseColor: color
+          });
+        }
       }
     }
 
-    function handleTouch(e, frame) {
+    function createBall(x, y, dx, dy) {
+      return {
+        x: x,
+        y: y,
+        dx: dx,
+        dy: dy,
+        speed: BASE_BALL_SPEED,
+        hitCooldown: 0 // 관통볼 연속 중복타격 방지 쿨타임
+      };
+    }
+
+    function resetToSingleBall() {
+      balls = [createBall(paddle.x + paddle.w / 2, paddle.y - 12, (Math.random() > 0.5 ? 1 : -1) * 3, -3.8)];
+    }
+
+    function startGame() {
+      score = 0;
+      lives = 3;
+      items = [];
+      activeEffects.giantPierceTimer = 0;
+      activeEffects.expandTimer = 0;
+      paddle.w = PADDLE_DEFAULT_W;
+      paddle.x = GAME_W / 2 - paddle.w / 2;
+
+      initBricks();
+      resetToSingleBall();
+
+      startOverlay.style.display = 'none';
+      gameOverOverlay.style.display = 'none';
+      isPlaying = true;
+      requestAnimationFrame(loop);
+    }
+
+    // 모바일 터치 및 드래그 조작
+    function handleTouch(e) {
+      if (!isPlaying) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = GAME_W / rect.width;
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-      const rect = frame.getBoundingClientRect();
-      const clickX = ((clientX - rect.left) / rect.width) * 100;
-      const clickY = ((clientY - rect.top) / rect.height) * 100;
-
-      const hit = targets.find(t => {
-        if (t.found) return false;
-        const dist = Math.hypot(clickX - t.x, clickY - t.y);
-        return dist <= t.radius;
-      });
-
-      if (hit) {
-        hit.found = true;
-        createMarker(frameA, hit.x, hit.y);
-        createMarker(frameB, hit.x, hit.y);
-        updateRemaining();
-      } else {
-        createMiss(frame, clickX, clickY);
-      }
+      const touchX = (clientX - rect.left) * scaleX;
+      paddle.x = Math.max(12, Math.min(GAME_W - paddle.w - 12, touchX - paddle.w / 2));
     }
 
-    function createMarker(parent, x, y) {
-      const marker = document.createElement('div');
-      marker.className = 'marker';
-      marker.style.left = `${x}%`;
-      marker.style.top = `${y}%`;
-      parent.appendChild(marker);
-    }
-
-    function createMiss(parent, x, y) {
-      const miss = document.createElement('div');
-      miss.className = 'miss';
-      miss.textContent = '✕';
-      miss.style.left = `${x}%`;
-      miss.style.top = `${y}%`;
-      parent.appendChild(miss);
-      setTimeout(() => miss.remove(), 450);
-    }
-
-    function restartGame() {
-      targets = JSON.parse(JSON.stringify(TARGET_CONFIG));
-      document.querySelectorAll('.marker, .miss').forEach(el => el.remove());
-      clearOverlay.style.display = 'none';
-      updateRemaining();
-    }
-
-    ['pointerdown', 'touchstart'].forEach(type => {
-      frameA.addEventListener(type, (e) => { e.preventDefault(); handleTouch(e, frameA); }, { passive: false });
-      frameB.addEventListener(type, (e) => { e.preventDefault(); handleTouch(e, frameB); }, { passive: false });
+    ['pointermove', 'touchmove', 'pointerdown', 'touchstart'].forEach(type => {
+      window.addEventListener(type, handleTouch, { passive: true });
     });
 
-    updateRemaining();
+    // 아이템 생성 (20% 확률)
+    function maybeSpawnItem(x, y) {
+      if (Math.random() < 0.20) {
+        const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+        items.push({
+          x: x + BRICK_W / 2,
+          y: y + BRICK_H / 2,
+          w: 22,
+          h: 12,
+          type: itemType.type,
+          label: itemType.label,
+          color: itemType.color,
+          speed: 2.2
+        });
+      }
+    }
+
+    // 파워업 획득 적용
+    function applyPowerUp(type) {
+      if (type === 'MULTI') {
+        if (balls.length > 0) {
+          const mainBall = balls[0];
+          balls.push(createBall(mainBall.x, mainBall.y, -3.2, -3.2));
+          balls.push(createBall(mainBall.x, mainBall.y, 3.2, -3.2));
+        }
+      } else if (type === 'GIANT_PIERCE') {
+        activeEffects.giantPierceTimer = 480; // 60fps 기준 약 8초
+      } else if (type === 'EXPAND') {
+        activeEffects.expandTimer = 480;      // 60fps 기준 약 8초
+        paddle.w = PADDLE_DEFAULT_W * 1.5;
+      }
+    }
+
+    // 물리 업데이트
+    function update() {
+      // 1. 파워업 타이머 갱신
+      if (activeEffects.giantPierceTimer > 0) {
+        activeEffects.giantPierceTimer--;
+      }
+      if (activeEffects.expandTimer > 0) {
+        activeEffects.expandTimer--;
+        if (activeEffects.expandTimer === 0) {
+          paddle.w = PADDLE_DEFAULT_W;
+        }
+      }
+
+      const isGiant = activeEffects.giantPierceTimer > 0;
+      const currentRadius = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
+
+      // 2. 공 물리 업데이트
+      for (let i = balls.length - 1; i >= 0; i--) {
+        const ball = balls[i];
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+        if (ball.hitCooldown > 0) ball.hitCooldown--;
+
+        // 외곽 벽면 반사
+        if (ball.x - currentRadius < 14) {
+          ball.x = 14 + currentRadius;
+          ball.dx = Math.abs(ball.dx);
+        } else if (ball.x + currentRadius > GAME_W - 14) {
+          ball.x = GAME_W - 14 - currentRadius;
+          ball.dx = -Math.abs(ball.dx);
+        }
+        if (ball.y - currentRadius < 40) {
+          ball.y = 40 + currentRadius;
+          ball.dy = Math.abs(ball.dy);
+        }
+
+        // 패들 충돌
+        if (
+          ball.y + currentRadius >= paddle.y &&
+          ball.y - currentRadius <= paddle.y + paddle.h &&
+          ball.x >= paddle.x &&
+          ball.x <= paddle.x + paddle.w &&
+          ball.dy > 0
+        ) {
+          const hitPos = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+          ball.dx = hitPos * 4.6;
+          ball.dy = -Math.sqrt(Math.max(4, ball.speed * ball.speed - ball.dx * ball.dx));
+          ball.y = paddle.y - currentRadius;
+        }
+
+        // 벽돌 충돌 검사
+        for (let b of bricks) {
+          if (b.hp <= 0) continue;
+
+          if (
+            ball.x + currentRadius > b.x &&
+            ball.x - currentRadius < b.x + b.w &&
+            ball.y + currentRadius > b.y &&
+            ball.y - currentRadius < b.y + b.h
+          ) {
+            if (isGiant) {
+              // 거대 관통볼 모드: 튕기지 않고 즉시 파괴
+              b.hp = 0;
+              score += 20;
+              maybeSpawnItem(b.x, b.y);
+            } else {
+              // 일반 모드: 타격 및 튕김
+              if (ball.hitCooldown === 0) {
+                b.hp--;
+                score += 10;
+                ball.dy = -ball.dy;
+                ball.hitCooldown = 3;
+                if (b.hp <= 0) maybeSpawnItem(b.x, b.y);
+              }
+              break;
+            }
+          }
+        }
+
+        // 바닥 낙하
+        if (ball.y - currentRadius > GAME_H) {
+          balls.splice(i, 1);
+        }
+      }
+
+      // 공이 모두 떨어졌을 때 라이프 감소
+      if (balls.length === 0) {
+        lives--;
+        activeEffects.giantPierceTimer = 0;
+        activeEffects.expandTimer = 0;
+        paddle.w = PADDLE_DEFAULT_W;
+
+        if (lives <= 0) {
+          gameOver(false);
+          return;
+        } else {
+          resetToSingleBall();
+        }
+      }
+
+      // 3. 아이템 낙하 및 획득 검사
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        it.y += it.speed;
+
+        // 패들로 먹었을 때
+        if (
+          it.x + it.w / 2 >= paddle.x &&
+          it.x - it.w / 2 <= paddle.x + paddle.w &&
+          it.y + it.h / 2 >= paddle.y &&
+          it.y - it.h / 2 <= paddle.y + paddle.h
+        ) {
+          applyPowerUp(it.type);
+          score += 50;
+          items.splice(i, 1);
+          continue;
+        }
+
+        // 화면 바깥으로 벗어남
+        if (it.y > GAME_H) {
+          items.splice(i, 1);
+        }
+      }
+
+      // 클리어 검사
+      if (bricks.every(b => b.hp <= 0)) {
+        gameOver(true);
+      }
+    }
+
+    function gameOver(win) {
+      isPlaying = false;
+      overTitle.textContent = win ? "ROUND CLEAR!" : "GAME OVER";
+      overTitle.style.color = win ? "#4cd964" : "#ff3333";
+      finalScore.textContent = `최종 점수: ${score}`;
+      gameOverOverlay.style.display = 'flex';
+    }
+
+    // 벽돌 현재 HP에 따른 색상 결정 (피격 시 변색)
+    function getBrickColor(b) {
+      if (b.maxHp === 3) {
+        if (b.hp === 3) return '#ffd700'; // 온전한 골드
+        if (b.hp === 2) return '#cd7f32'; // 1타: 구리빛으로 변색
+        return '#654321';                 // 2타: 거무튀튀하게 깨질듯 변색
+      }
+      if (b.maxHp === 2) {
+        if (b.hp === 2) return '#dcdcdc'; // 온전한 실버
+        return '#708090';                 // 1타: 어두운 슬레이트 그레이
+      }
+      return b.baseColor;
+    }
+
+    function draw() {
+      const scale = canvas.width / GAME_W;
+      ctx.save();
+      ctx.scale(scale, scale);
+
+      // 1. 배경
+      if (bgLoaded) {
+        ctx.drawImage(bgImg, 0, 0, GAME_W, GAME_H);
+      } else {
+        ctx.fillStyle = '#061633';
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+      }
+
+      // 2. 외곽 프레임
+      ctx.fillStyle = '#7a7a85';
+      ctx.fillRect(0, 36, 12, GAME_H);
+      ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
+      ctx.fillRect(0, 24, GAME_W, 12);
+
+      // 3. HUD 정보
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px Courier New';
+      ctx.fillText(`SCORE: ${score}`, 18, 18);
+      ctx.fillStyle = '#e60012';
+      ctx.fillText(`LIVES: ${'● '.repeat(lives)}`, GAME_W - 105, 18);
+
+      // 파워업 활성화 알림 표시
+      if (activeEffects.giantPierceTimer > 0) {
+        ctx.fillStyle = '#ff0055';
+        ctx.fillText(`[PIERCE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 38);
+      } else if (activeEffects.expandTimer > 0) {
+        ctx.fillStyle = '#39ff14';
+        ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 38);
+      }
+
+      // 4. 벽돌 그리기
+      for (let b of bricks) {
+        if (b.hp <= 0) continue;
+        ctx.fillStyle = getBrickColor(b);
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+
+        // 하이라이트/그림자 엠보싱 효과
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.fillRect(b.x, b.y, b.w, 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+      }
+
+      // 5. 떨어지는 캡슐 아이템 그리기
+      for (let it of items) {
+        ctx.fillStyle = it.color;
+        ctx.beginPath();
+        ctx.roundRect(it.x - it.w / 2, it.y - it.h / 2, it.w, it.h, 6);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(it.label, it.x, it.y);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      // 6. 패들 그리기
+      ctx.fillStyle = activeEffects.expandTimer > 0 ? '#39ff14' : '#e52521';
+      ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
+
+      // 7. 공 그리기 (거대 관통 모드 시 붉은 화염 광원 효과)
+      const isGiant = activeEffects.giantPierceTimer > 0;
+      const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
+
+      for (let ball of balls) {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = isGiant ? '#ff0055' : '#ffffff';
+        ctx.shadowColor = isGiant ? '#ff0000' : '#00ffff';
+        ctx.shadowBlur = isGiant ? 12 : 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // 8. 하단 터치 가이드 라인
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(12, GAME_H - 105);
+      ctx.lineTo(GAME_W - 12, GAME_H - 105);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.restore();
+    }
+
+    function loop() {
+      if (!isPlaying) return;
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    draw();
   </script>
 </body>
 </html>
