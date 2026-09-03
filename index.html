@@ -70,8 +70,12 @@
   </div>
 
   <script>
-    // --- 1. Web Audio API 효과음 ---
+    // --- 1. 효과음 엔진 (시작 사운드 WAV + 인게임 칩튠 사운드) ---
     let audioCtx = null;
+
+    // 업로드할 시작 오디오 객체
+    const startAudio = new Audio('start.wav');
+    startAudio.preload = 'auto';
 
     function initAudio() {
       if (!audioCtx) {
@@ -81,6 +85,15 @@
       if (audioCtx.state === 'suspended') {
         audioCtx.resume();
       }
+    }
+
+    function playStartWav() {
+      try {
+        startAudio.currentTime = 0;
+        startAudio.play().catch(() => {
+          // start.wav 파일이 없거나 브라우저 제한 시 무시
+        });
+      } catch (e) {}
     }
 
     function playTone(freq, type, duration, endFreq = null) {
@@ -152,7 +165,6 @@
     let lives = 3;
     let isPlaying = false;
 
-    // 패들 위치 (화면 바닥에서 135px 띄워 터치 시야 확보)
     const PADDLE_DEFAULT_W = 68;
     const paddle = {
       w: PADDLE_DEFAULT_W,
@@ -194,10 +206,10 @@
           let color = '#e52521';
 
           if (r === 0) {
-            maxHp = 3; // 골드
+            maxHp = 3;
             color = '#ffd700';
           } else if (r === 1 || r === 2) {
-            maxHp = 2; // 실버
+            maxHp = 2;
             color = '#c0c0c0';
           } else if (r === 3) {
             color = '#ff5f00';
@@ -232,6 +244,8 @@
 
     function startGame() {
       initAudio();
+      playStartWav(); // 게임 시작 시 WAV 효과음 재생
+
       score = 0;
       lives = 3;
       items = [];
@@ -441,48 +455,40 @@
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 1. 전체 화면 기본 블랙 채우기
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, GAME_H);
 
-      // 2. 가용 영역(프레임 내부) 기준 종횡비 100% 유지 계산
       const playArea = {
         x: 12,
         y: 36,
-        w: GAME_W - 24, // 336px
-        h: GAME_H - 36  // 604px
+        w: GAME_W - 24,
+        h: GAME_H - 36
       };
 
-      // 플레이 영역 내부도 기본 블랙
       ctx.fillRect(playArea.x, playArea.y, playArea.w, playArea.h);
 
       if (bgLoaded && bgImg.naturalWidth > 0) {
         const imgW = bgImg.naturalWidth;
         const imgH = bgImg.naturalHeight;
 
-        // 가로/세로 축소 비율 중 더 작은 쪽을 택해 왜곡 없이 전체 포함(Contain)
         const scaleFit = Math.min(playArea.w / imgW, playArea.h / imgH);
         const finalW = imgW * scaleFit;
         const finalH = imgH * scaleFit;
 
-        // 남는 영역 중앙 정렬 (상하 또는 좌우 빈 공간은 순수 Black 유지)
         const finalX = playArea.x + (playArea.w - finalW) / 2;
         const finalY = playArea.y + (playArea.h - finalH) / 2;
 
         ctx.drawImage(bgImg, finalX, finalY, finalW, finalH);
 
-        // 벽돌 시인성을 위한 25% 명도 감쇄
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.fillRect(finalX, finalY, finalW, finalH);
       }
 
-      // 3. 아케이드 외곽 프레임
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
       ctx.fillRect(0, 24, GAME_W, 12);
 
-      // 4. HUD 정보
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
@@ -497,7 +503,6 @@
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 38);
       }
 
-      // 5. 벽돌 그리기
       for (let b of bricks) {
         if (b.hp <= 0) continue;
         ctx.fillStyle = getBrickColor(b);
@@ -508,7 +513,6 @@
         ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
       }
 
-      // 6. 낙하 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -523,13 +527,11 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      // 7. 패들
       ctx.fillStyle = activeEffects.expandTimer > 0 ? '#39ff14' : '#e52521';
       ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
-      // 8. 공
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
@@ -543,7 +545,6 @@
         ctx.shadowBlur = 0;
       }
 
-      // 9. 하단 컨트롤 가이드 라인
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
