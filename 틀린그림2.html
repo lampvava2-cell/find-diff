@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>틀린그림찾기 - 자동 감지</title>
+<style>
+* {
+box-sizing: border-box;
+user-select: none;
+-webkit-user-select: none;
+touch-action: manipulation;
+}
+html, body {
+margin: 0;
+padding: 0;
+width: 100vw;
+height: 100vh;
+overflow: hidden;
+background-color: #0d0d0d;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 플로팅 상태 표시 HUD */
+.hud {
+position: absolute;
+top: env(safe-area-inset-top, 8px);
+left: 50%;
+transform: translateX(-50%);
+display: flex;
+gap: 12px;
+z-index: 20;
+}
+.badge {
+background: rgba(0, 0, 0, 0.75);
+backdrop-filter: blur(5px);
+color: #fff;
+padding: 6px 16px;
+border-radius: 20px;
+font-size: 14px;
+font-weight: 700;
+border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.badge span {
+color: #ff3b30;
+font-size: 16px;
+}
+
+/* 게임 캔버스 메인 레이아웃 */
+.screen-container {
+width: 100vw;
+height: 100vh;
+display: flex;
+flex-direction: row;
+align-items: center;
+justify-content: center;
+padding: env(safe-area-inset-top, 4px) env(safe-area-inset-right, 6px) env(safe-area-inset-bottom, 4px) env(safe-area-inset-left, 6px);
+gap: 8px;
+}
+
+.image-slot {
+position: relative;
+flex: 1;
+height: 100%;
+display: flex;
+align-items: center;
+justify-content: center;
+overflow: hidden;
+}
+
+.image-frame {
+position: relative;
+display: inline-block;
+max-width: 100%;
+max-height: 100%;
+line-height: 0;
+border-radius: 6px;
+overflow: hidden;
+box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+border: 1px solid #222;
+background-color: #000;
+}
+
+.image-frame img {
+display: block;
+max-width: 100%;
+max-height: 98vh;
+width: auto;
+height: auto;
+object-fit: contain;
+pointer-events: none;
+}
+
+/* 정답 동그라미 마커 */
+.marker {
+position: absolute;
+width: 48px;
+height: 48px;
+border: 3.5px solid #ff2b54;
+border-radius: 50%;
+transform: translate(-50%, -50%);
+pointer-events: none;
+box-shadow: 0 0 10px rgba(255, 43, 84, 0.8);
+animation: pop 0.25s ease-out;
+}
+@keyframes pop {
+0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* 오답 터치 효과 */
+.miss {
+position: absolute;
+width: 28px;
+height: 28px;
+transform: translate(-50%, -50%);
+pointer-events: none;
+font-size: 24px;
+color: #ff3b30;
+font-weight: 900;
+animation: fadeOut 0.5s ease-out forwards;
+}
+@keyframes fadeOut {
+0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+100% { opacity: 0; transform: translate(-50%, -70%) scale(0.8); }
+}
+
+/* 로딩 및 클리어 모달 */
+.overlay {
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.88);
+display: flex;
+justify-content: center;
+align-items: center;
+z-index: 100;
+color: white;
+text-align: center;
+}
+.modal-box {
+background: #1c1c1e;
+padding: 24px 36px;
+border-radius: 14px;
+border: 1px solid #333;
+}
+.btn-restart {
+margin-top: 14px;
+padding: 10px 24px;
+font-size: 15px;
+background: #007aff;
+color: white;
+border: none;
+border-radius: 8px;
+cursor: pointer;
+font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<!-- 상단 HUD -->
+<div class="hud">
+<div class="badge">남은 개수: <span id="remaining-count">-</span></div>
+</div>
+
+<div class="screen-container">
+<!-- 좌측 원본 (aaa) -->
+<div class="image-slot">
+<div class="image-frame" id="frame-a">
+<img src="aaa.jpg" id="img-a" alt="원본 (aaa)" crossOrigin="anonymous" />
+</div>
+</div>
+
+<!-- 우측 틀린부분 포함본 (bbb) -->
+<div class="image-slot">
+<div class="image-frame" id="frame-b">
+<img src="bbb.jpg" id="img-b" alt="틀린그림 (bbb)" crossOrigin="anonymous" />
+</div>
+</div>
+</div>
+
+<!-- 시작 시 이미지 분석 로딩창 -->
+<div class="overlay" id="loading-overlay">
+<div class="modal-box">
+<h3 style="margin-bottom: 8px;">🔍 이미지 분석 중</h3>
+<p style="font-size: 13px; color: #aaa;">두 사진을 비교하여 틀린 위치를 계산하고 있습니다...</p>
+</div>
+</div>
+
+<!-- 게임 완료 모달 -->
+<div class="overlay" id="clear-overlay" style="display: none;">
+<div class="modal-box">
+<h2>🎉 CLEAR!</h2>
+<p>모든 틀린 부분을 찾았습니다!</p>
+<button class="btn-restart" onclick="restartGame()">다시하기</button>
+</div>
+</div>
+
+<script>
+const frameA = document.getElementById('frame-a');
+const frameB = document.getElementById('frame-b');
+const imgA = document.getElementById('img-a');
+const imgB = document.getElementById('img-b');
+const remainingEl = document.getElementById('remaining-count');
+const loadingOverlay = document.getElementById('loading-overlay');
+const clearOverlay = document.getElementById('clear-overlay');
+
+let targets = [];
+let isReady = false;
+
+// 두 이미지가 모두 로드된 후 자동 분석 시작
+Promise.all([
+new Promise(resolve => imgA.complete ? resolve() : imgA.onload = resolve),
+new Promise(resolve => imgB.complete ? resolve() : imgB.onload = resolve)
+ ]).then(autoDetectDifferences);
+
+/**
+* 두 이미지를 캔버스에 올려 픽셀 단위로 비교 및 틀린 지점 그룹화(Clustering)
+*/
+function autoDetectDifferences() {
+const w = 400; // 빠른 연산을 위한 분석 스케일 (가로 해상도 정규화)
+const h = Math.round(w * (imgA.naturalHeight / imgA.naturalWidth));
+
+const canvasA = document.createElement('canvas');
+const canvasB = document.createElement('canvas');
+canvasA.width = canvasB.width = w;
+canvasA.height = canvasB.height = h;
+
+const ctxA = canvasA.getContext('2d');
+const ctxB = canvasB.getContext('2d');
+ctxA.drawImage(imgA, 0, 0, w, h);
+ctxB.drawImage(imgB, 0, 0, w, h);
+
+const dataA = ctxA.getImageData(0, 0, w, h).data;
+const dataB = ctxB.getImageData(0, 0, w, h).data;
+
+const diffPoints = [];
+const threshold = 35; // 색상 차이 감도 임계값
+
+// 픽셀 간 차이 감지
+for (let y = 0; y < h; y += 2) {
+for (let x = 0; x < w; x += 2) {
+const idx = (y * w + x) * 4;
+const diffR = Math.abs(dataA[idx] - dataB[idx]);
+const diffG = Math.abs(dataA[idx + 1] - dataB[idx + 1]);
+const diffB = Math.abs(dataA[idx + 2] - dataB[idx + 2]);
+const totalDiff = (diffR + diffG + diffB) / 3;
+
+if (totalDiff > threshold) {
+diffPoints.push({ x: (x / w) * 100, y: (y / h) * 100 });
+}
+}
+}
+
+// 차이점 군집화 (근접 픽셀들을 1개의 타겟 영역으로 병합)
+const clusterDistance = 7.0; // 같은 물체로 판정할 최대 거리(%)
+const clusters = [];
+
+diffPoints.forEach(p => {
+let added = false;
+for (let cluster of clusters) {
+const dist = Math.hypot(p.x - cluster.centerX, p.y - cluster.centerY);
+if (dist < clusterDistance) {
+cluster.points.push(p);
+// 중심점 갱신
+cluster.centerX = cluster.points.reduce((acc, cur) => acc + cur.x, 0) / cluster.points.length;
+cluster.centerY = cluster.points.reduce((acc, cur) => acc + cur.y, 0) / cluster.points.length;
+added = true;
+break;
+}
+}
+if (!added) {
+clusters.push({ centerX: p.x, centerY: p.y, points: [p] });
+}
+});
+
+// 자잘한 노이즈(먼지 수준 픽셀) 제거 후 타겟 확정
+const minClusterSize = 8;
+targets = clusters
+.filter(c => c.points.length >= minClusterSize)
+.map((c, i) => ({
+id: i + 1,
+x: c.centerX,
+y: c.centerY,
+radius: 7.0, // 터치 허용 반경(%)
+found: false
+}));
+
+loadingOverlay.style.display = 'none';
+isReady = true;
+updateRemaining();
+}
+
+function updateRemaining() {
+const remaining = targets.filter(t => !t.found).length;
+remainingEl.textContent = remaining;
+if (targets.length > 0 && remaining === 0) {
+setTimeout(() => {
+clearOverlay.style.display = 'flex';
+}, 300);
+}
+}
+
+function handleTouch(e, frame) {
+if (!isReady) return;
+
+const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+const rect = frame.getBoundingClientRect();
+const clickX = ((clientX - rect.left) / rect.width) * 100;
+const clickY = ((clientY - rect.top) / rect.height) * 100;
+
+// 터치 유효성 판정
+const hit = targets.find(t => {
+if (t.found) return false;
+const dist = Math.hypot(clickX - t.x, clickY - t.y);
+return dist <= t.radius;
+});
+
+if (hit) {
+hit.found = true;
+createMarker(frameA, hit.x, hit.y);
+createMarker(frameB, hit.x, hit.y);
+updateRemaining();
+} else {
+// 오답 터치 시 X 표시 피드백
+createMiss(frame, clickX, clickY);
+}
+}
+
+function createMarker(parent, x, y) {
+const marker = document.createElement('div');
+marker.className = 'marker';
+marker.style.left = ${x}%; marker.style.top = ``${y}%;
+parent.appendChild(marker);
+}
+
+function createMiss(parent, x, y) {
+const miss = document.createElement('div');
+miss.className = 'miss';
+miss.textContent = '✕';
+miss.style.left = ${x}%; miss.style.top = ``${y}%;
+parent.appendChild(miss);
+setTimeout(() => miss.remove(), 500);
+}
+
+function restartGame() {
+targets.forEach(t => t.found = false);
+document.querySelectorAll('.marker, .miss').forEach(el => el.remove());
+clearOverlay.style.display = 'none';
+updateRemaining();
+}
+
+// 터치/클릭 바인딩
+['pointerdown', 'touchstart'].forEach(type => {
+frameA.addEventListener(type, (e) => { e.preventDefault(); handleTouch(e, frameA); }, { passive: false });
+frameB.addEventListener(type, (e) => { e.preventDefault(); handleTouch(e, frameB); }, { passive: false });
+});
+</script>
+</body>
+</html>
