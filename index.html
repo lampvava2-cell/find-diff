@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>알카노이드 EX</title>
+  <title>알카노이드 FX</title>
   <style>
     * {
       box-sizing: border-box;
@@ -57,7 +57,7 @@
   <canvas id="gameCanvas"></canvas>
 
   <div class="overlay" id="startOverlay">
-    <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID EX</h1>
+    <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
     <p style="color: #aaa; font-size: 13px; margin-bottom: 2px;">특수 벽돌: 은색(2방), 금색(3방)</p>
     <p style="color: #4cd964; font-size: 13px;">캡슐 아이템: 관통볼, 멀티볼, 패들확장</p>
     <button class="btn" onclick="startGame()">게임 시작</button>
@@ -70,6 +70,56 @@
   </div>
 
   <script>
+    // --- 1. 내장 사운드 엔진 (Web Audio API) ---
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, type, duration, endFreq = null) {
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const now = audioCtx.currentTime;
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (endFreq) {
+          osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+        }
+
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + duration);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + duration);
+      } catch (e) {}
+    }
+
+    const sound = {
+      hitBrick: (isSpecial) => playTone(isSpecial ? 280 : 540, 'square', 0.08, isSpecial ? 180 : 800),
+      hitPaddle: () => playTone(220, 'triangle', 0.12, 110),
+      hitWall: () => playTone(440, 'sine', 0.04),
+      powerUp: () => {
+        playTone(400, 'square', 0.08);
+        setTimeout(() => playTone(600, 'square', 0.08), 70);
+        setTimeout(() => playTone(800, 'square', 0.14), 140);
+      },
+      loseLife: () => playTone(250, 'sawtooth', 0.35, 40)
+    };
+
+    // --- 2. 캔버스 및 화면 설정 ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const startOverlay = document.getElementById('startOverlay');
@@ -89,17 +139,22 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // 배경 이미지 로드 (bg.jpg)
+    // 배경 이미지 객체 로드
     const bgImg = new Image();
     let bgLoaded = false;
     bgImg.src = 'bg.jpg';
     bgImg.onload = () => { bgLoaded = true; };
+    bgImg.onerror = () => {
+      // bg.jpg가 없을 경우 bg.png 시도
+      bgImg.src = 'bg.png';
+      bgImg.onload = () => { bgLoaded = true; };
+    };
 
     let score = 0;
     let lives = 3;
     let isPlaying = false;
 
-    // 패들 기본 설정 (화면 하단에서 135px 띄움)
+    // 패들 기본 설정 (화면 하단에서 135px 띄워 손가락 여유 공간 확보)
     const PADDLE_DEFAULT_W = 68;
     const paddle = {
       w: PADDLE_DEFAULT_W,
@@ -108,26 +163,23 @@
       y: GAME_H - 135
     };
 
-    // 공 목록 (멀티볼 지원)
     let balls = [];
     const BASE_BALL_R = 4.5;
     const BASE_BALL_SPEED = 4.8;
 
-    // 파워업 아이템 관리
     let items = [];
     const ITEM_TYPES = [
-      { type: 'MULTI', label: 'M', color: '#00ffff' },      // 공 3개 분열
-      { type: 'GIANT_PIERCE', label: 'G', color: '#ff0055' },// 거대 관통볼
-      { type: 'EXPAND', label: 'E', color: '#39ff14' }       // 패들 확장
+      { type: 'MULTI', label: 'M', color: '#00ffff' },
+      { type: 'GIANT_PIERCE', label: 'G', color: '#ff0055' },
+      { type: 'EXPAND', label: 'E', color: '#39ff14' }
     ];
 
-    // 파워업 지속 타이머 상태
     let activeEffects = {
       giantPierceTimer: 0,
       expandTimer: 0
     };
 
-    // 벽돌 레이아웃 설정 (7행 11열)
+    // 7행 11열 벽돌 레이아웃
     const BRICK_ROWS = 7;
     const BRICK_COLS = 11;
     const BRICK_W = 28;
@@ -145,12 +197,10 @@
           let color = '#e52521';
 
           if (r === 0) {
-            // 맨 윗줄: 3번 때려야 깨지는 골드 벽돌
-            maxHp = 3;
+            maxHp = 3; // 골드 벽돌
             color = '#ffd700';
           } else if (r === 1 || r === 2) {
-            // 2, 3번째 줄: 2번 때려야 깨지는 실버 벽돌
-            maxHp = 2;
+            maxHp = 2; // 실버 벽돌
             color = '#c0c0c0';
           } else if (r === 3) {
             color = '#ff5f00';
@@ -176,14 +226,7 @@
     }
 
     function createBall(x, y, dx, dy) {
-      return {
-        x: x,
-        y: y,
-        dx: dx,
-        dy: dy,
-        speed: BASE_BALL_SPEED,
-        hitCooldown: 0 // 관통볼 연속 중복타격 방지 쿨타임
-      };
+      return { x, y, dx, dy, speed: BASE_BALL_SPEED, hitCooldown: 0 };
     }
 
     function resetToSingleBall() {
@@ -191,6 +234,7 @@
     }
 
     function startGame() {
+      initAudio();
       score = 0;
       lives = 3;
       items = [];
@@ -208,7 +252,7 @@
       requestAnimationFrame(loop);
     }
 
-    // 모바일 터치 및 드래그 조작
+    // 모바일 터치 가로 연동
     function handleTouch(e) {
       if (!isPlaying) return;
       const rect = canvas.getBoundingClientRect();
@@ -222,73 +266,69 @@
       window.addEventListener(type, handleTouch, { passive: true });
     });
 
-    // 아이템 생성 (20% 확률)
     function maybeSpawnItem(x, y) {
-      if (Math.random() < 0.20) {
-        const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+      if (Math.random() < 0.22) {
+        const it = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
         items.push({
           x: x + BRICK_W / 2,
           y: y + BRICK_H / 2,
           w: 22,
           h: 12,
-          type: itemType.type,
-          label: itemType.label,
-          color: itemType.color,
+          type: it.type,
+          label: it.label,
+          color: it.color,
           speed: 2.2
         });
       }
     }
 
-    // 파워업 획득 적용
     function applyPowerUp(type) {
+      sound.powerUp();
       if (type === 'MULTI') {
         if (balls.length > 0) {
-          const mainBall = balls[0];
-          balls.push(createBall(mainBall.x, mainBall.y, -3.2, -3.2));
-          balls.push(createBall(mainBall.x, mainBall.y, 3.2, -3.2));
+          const b = balls[0];
+          balls.push(createBall(b.x, b.y, -3.2, -3.2));
+          balls.push(createBall(b.x, b.y, 3.2, -3.2));
         }
       } else if (type === 'GIANT_PIERCE') {
-        activeEffects.giantPierceTimer = 480; // 60fps 기준 약 8초
+        activeEffects.giantPierceTimer = 480;
       } else if (type === 'EXPAND') {
-        activeEffects.expandTimer = 480;      // 60fps 기준 약 8초
+        activeEffects.expandTimer = 480;
         paddle.w = PADDLE_DEFAULT_W * 1.5;
       }
     }
 
-    // 물리 업데이트
+    // --- 3. 물리 및 충돌 업데이트 ---
     function update() {
-      // 1. 파워업 타이머 갱신
-      if (activeEffects.giantPierceTimer > 0) {
-        activeEffects.giantPierceTimer--;
-      }
+      if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
       if (activeEffects.expandTimer > 0) {
         activeEffects.expandTimer--;
-        if (activeEffects.expandTimer === 0) {
-          paddle.w = PADDLE_DEFAULT_W;
-        }
+        if (activeEffects.expandTimer === 0) paddle.w = PADDLE_DEFAULT_W;
       }
 
       const isGiant = activeEffects.giantPierceTimer > 0;
       const currentRadius = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
-      // 2. 공 물리 업데이트
       for (let i = balls.length - 1; i >= 0; i--) {
         const ball = balls[i];
         ball.x += ball.dx;
         ball.y += ball.dy;
         if (ball.hitCooldown > 0) ball.hitCooldown--;
 
-        // 외곽 벽면 반사
+        // 좌우/상단 벽면 충돌
         if (ball.x - currentRadius < 14) {
           ball.x = 14 + currentRadius;
           ball.dx = Math.abs(ball.dx);
+          sound.hitWall();
         } else if (ball.x + currentRadius > GAME_W - 14) {
           ball.x = GAME_W - 14 - currentRadius;
           ball.dx = -Math.abs(ball.dx);
+          sound.hitWall();
         }
         if (ball.y - currentRadius < 40) {
           ball.y = 40 + currentRadius;
           ball.dy = Math.abs(ball.dy);
+          sound.hitWall();
         }
 
         // 패들 충돌
@@ -303,6 +343,7 @@
           ball.dx = hitPos * 4.6;
           ball.dy = -Math.sqrt(Math.max(4, ball.speed * ball.speed - ball.dx * ball.dx));
           ball.y = paddle.y - currentRadius;
+          sound.hitPaddle();
         }
 
         // 벽돌 충돌 검사
@@ -316,17 +357,17 @@
             ball.y - currentRadius < b.y + b.h
           ) {
             if (isGiant) {
-              // 거대 관통볼 모드: 튕기지 않고 즉시 파괴
               b.hp = 0;
               score += 20;
+              sound.hitBrick(false);
               maybeSpawnItem(b.x, b.y);
             } else {
-              // 일반 모드: 타격 및 튕김
               if (ball.hitCooldown === 0) {
                 b.hp--;
                 score += 10;
                 ball.dy = -ball.dy;
                 ball.hitCooldown = 3;
+                sound.hitBrick(b.hp > 0);
                 if (b.hp <= 0) maybeSpawnItem(b.x, b.y);
               }
               break;
@@ -334,15 +375,16 @@
           }
         }
 
-        // 바닥 낙하
+        // 공 낙하
         if (ball.y - currentRadius > GAME_H) {
           balls.splice(i, 1);
         }
       }
 
-      // 공이 모두 떨어졌을 때 라이프 감소
+      // 모든 공 소실
       if (balls.length === 0) {
         lives--;
+        sound.loseLife();
         activeEffects.giantPierceTimer = 0;
         activeEffects.expandTimer = 0;
         paddle.w = PADDLE_DEFAULT_W;
@@ -355,12 +397,11 @@
         }
       }
 
-      // 3. 아이템 낙하 및 획득 검사
+      // 아이템 낙하 및 획득
       for (let i = items.length - 1; i >= 0; i--) {
         const it = items[i];
         it.y += it.speed;
 
-        // 패들로 먹었을 때
         if (
           it.x + it.w / 2 >= paddle.x &&
           it.x - it.w / 2 <= paddle.x + paddle.w &&
@@ -373,13 +414,9 @@
           continue;
         }
 
-        // 화면 바깥으로 벗어남
-        if (it.y > GAME_H) {
-          items.splice(i, 1);
-        }
+        if (it.y > GAME_H) items.splice(i, 1);
       }
 
-      // 클리어 검사
       if (bricks.every(b => b.hp <= 0)) {
         gameOver(true);
       }
@@ -393,34 +430,60 @@
       gameOverOverlay.style.display = 'flex';
     }
 
-    // 벽돌 현재 HP에 따른 색상 결정 (피격 시 변색)
     function getBrickColor(b) {
       if (b.maxHp === 3) {
-        if (b.hp === 3) return '#ffd700'; // 온전한 골드
-        if (b.hp === 2) return '#cd7f32'; // 1타: 구리빛으로 변색
-        return '#654321';                 // 2타: 거무튀튀하게 깨질듯 변색
+        if (b.hp === 3) return '#ffd700';
+        if (b.hp === 2) return '#cd7f32';
+        return '#654321';
       }
       if (b.maxHp === 2) {
-        if (b.hp === 2) return '#dcdcdc'; // 온전한 실버
-        return '#708090';                 // 1타: 어두운 슬레이트 그레이
+        if (b.hp === 2) return '#dcdcdc';
+        return '#708090';
       }
       return b.baseColor;
     }
 
+    // --- 4. 렌더링 (비율 유지 배경 드로잉 탑재) ---
     function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       const scale = canvas.width / GAME_W;
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 1. 배경
-      if (bgLoaded) {
-        ctx.drawImage(bgImg, 0, 0, GAME_W, GAME_H);
-      } else {
-        ctx.fillStyle = '#061633';
-        ctx.fillRect(0, 0, GAME_W, GAME_H);
+      // 1. 비율 유지 배경 렌더링 (Aspect Contain 방식)
+      ctx.fillStyle = '#061633';
+      ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+      if (bgLoaded && bgImg.width > 0) {
+        const imgRatio = bgImg.width / bgImg.height;
+        const areaW = GAME_W - 24; // 테두리 안쪽 가용 너비
+        const areaH = GAME_H - 36; // 테두리 안쪽 가용 높이
+        const areaRatio = areaW / areaH;
+
+        let renderW, renderH, renderX, renderY;
+
+        // 원본 종횡비를 깨지 않고 적정 크기로 맞춤
+        if (imgRatio > areaRatio) {
+          renderW = areaW;
+          renderH = areaW / imgRatio;
+        } else {
+          renderH = areaH;
+          renderW = areaH * imgRatio;
+        }
+
+        // 영역 중앙 정렬
+        renderX = 12 + (areaW - renderW) / 2;
+        renderY = 36 + (areaH - renderH) / 2;
+
+        ctx.drawImage(bgImg, renderX, renderY, renderW, renderH);
+
+        // 벽돌 가독성을 위한 반투명 음영 오버레이
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fillRect(12, 36, areaW, areaH);
       }
 
-      // 2. 외곽 프레임
+      // 2. 아케이드 외곽 프레임
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
@@ -433,7 +496,6 @@
       ctx.fillStyle = '#e60012';
       ctx.fillText(`LIVES: ${'● '.repeat(lives)}`, GAME_W - 105, 18);
 
-      // 파워업 활성화 알림 표시
       if (activeEffects.giantPierceTimer > 0) {
         ctx.fillStyle = '#ff0055';
         ctx.fillText(`[PIERCE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 38);
@@ -447,15 +509,13 @@
         if (b.hp <= 0) continue;
         ctx.fillStyle = getBrickColor(b);
         ctx.fillRect(b.x, b.y, b.w, b.h);
-
-        // 하이라이트/그림자 엠보싱 효과
         ctx.fillStyle = 'rgba(255,255,255,0.45)';
         ctx.fillRect(b.x, b.y, b.w, 2);
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
       }
 
-      // 5. 떨어지는 캡슐 아이템 그리기
+      // 5. 떨어지는 캡슐 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -476,7 +536,7 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
-      // 7. 공 그리기 (거대 관통 모드 시 붉은 화염 광원 효과)
+      // 7. 공 그리기
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
 
@@ -485,13 +545,13 @@
         ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2);
         ctx.fillStyle = isGiant ? '#ff0055' : '#ffffff';
         ctx.shadowColor = isGiant ? '#ff0000' : '#00ffff';
-        ctx.shadowBlur = isGiant ? 12 : 6;
+        ctx.shadowBlur = isGiant ? 14 : 6;
         ctx.fill();
         ctx.shadowBlur = 0;
       }
 
-      // 8. 하단 터치 가이드 라인
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      // 8. 하단 컨트롤 가이드 라인
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.moveTo(12, GAME_H - 105);
