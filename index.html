@@ -50,8 +50,7 @@
       border-radius: 8px;
       cursor: pointer;
     }
-    /* 캔버스 내부에서 프레임을 렌더링하므로 DOM에서는 숨김 처리 */
-    .bg-video {
+    #bgVideo {
       display: none;
     }
   </style>
@@ -60,9 +59,8 @@
 
   <canvas id="gameCanvas"></canvas>
 
-  <!-- 번갈아 재생할 두 개의 비디오 파일 (bg1.mp4, bg2.mp4 준비) -->
-  <video id="bgVideo1" class="bg-video" src="bg1.mp4" muted playsinline webkit-playsinline preload="auto"></video>
-  <video id="bgVideo2" class="bg-video" src="bg2.mp4" muted playsinline webkit-playsinline preload="auto"></video>
+  <!-- 단일 비디오 인스턴스 (bg1.mp4, bg2.mp4 순환용) -->
+  <video id="bgVideo" src="bg1.mp4" muted playsinline webkit-playsinline preload="auto"></video>
 
   <div class="overlay" id="startOverlay">
     <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
@@ -155,35 +153,36 @@
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 2. 캔버스 및 듀얼 비디오 교차 재생 엔진 ---
+    // --- 2. 캔버스 및 단일 비디오 안전 순환 엔진 ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const startOverlay = document.getElementById('startOverlay');
     const gameOverOverlay = document.getElementById('gameOverOverlay');
     const overTitle = document.getElementById('overTitle');
     const finalScore = document.getElementById('finalScore');
+    const bgVideo = document.getElementById('bgVideo');
 
-    const v1 = document.getElementById('bgVideo1');
-    const v2 = document.getElementById('bgVideo2');
-    const bgVideos = [v1, v2];
-    let currentVideoIdx = 0;
+    const videoList = ['bg1.mp4', 'bg2.mp4'];
+    let videoIndex = 0;
 
-    // 비디오 전환 핸들러 설정 (한 영상이 종료되면 다음 영상 재생)
-    bgVideos.forEach((v, idx) => {
-      v.addEventListener('ended', () => {
-        const nextIdx = (idx + 1) % bgVideos.length;
-        currentVideoIdx = nextIdx;
-        const nextVideo = bgVideos[nextIdx];
-        nextVideo.currentTime = 0;
-        nextVideo.play().catch(() => {});
-      });
+    // 영상 종료 시 다음 영상 소스로 교체 후 재생 (재생 권한 유지)
+    bgVideo.addEventListener('ended', () => {
+      videoIndex = (videoIndex + 1) % videoList.length;
+      bgVideo.src = videoList[videoIndex];
+      bgVideo.load();
+      bgVideo.play().catch(err => console.log("비디오 연속 재생 대기:", err));
     });
 
-    function startBgVideos() {
-      // 첫 터치 인터랙션 시 활성 비디오 재생
-      const activeVideo = bgVideos[currentVideoIdx];
-      if (activeVideo && activeVideo.paused) {
-        activeVideo.play().catch(() => {});
+    bgVideo.addEventListener('error', (e) => {
+      console.warn("비디오 로드 오류: 파일명(bg1.mp4, bg2.mp4) 및 H.264 코덱을 확인하세요.", e);
+    });
+
+    function startBgVideo() {
+      if (bgVideo) {
+        bgVideo.muted = true;
+        bgVideo.play().catch(err => {
+          console.log("모바일 자동재생 대기:", err);
+        });
       }
     }
 
@@ -320,7 +319,7 @@
     function startGame() {
       initAudio();
       playStartWav();
-      startBgVideos();
+      startBgVideo();
 
       score = 0;
       lives = 3;
@@ -554,16 +553,15 @@
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 1. 플레이 영역 및 번갈아 재생되는 비디오 렌더링
+      // 1. 배경 클리어 및 단일 비디오 렌더링
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, GAME_H);
 
       const playArea = { x: 12, y: 36, w: GAME_W - 24, h: GAME_H - 36 };
-      const currentVideo = bgVideos[currentVideoIdx];
 
-      if (currentVideo && currentVideo.readyState >= 2) {
-        const vw = currentVideo.videoWidth || 1;
-        const vh = currentVideo.videoHeight || 1;
+      if (bgVideo && bgVideo.readyState >= 2) {
+        const vw = bgVideo.videoWidth || 1;
+        const vh = bgVideo.videoHeight || 1;
         const vScale = Math.max(playArea.w / vw, playArea.h / vh);
         const finalW = vw * vScale;
         const finalH = vh * vScale;
@@ -574,9 +572,9 @@
         ctx.beginPath();
         ctx.rect(playArea.x, playArea.y, playArea.w, playArea.h);
         ctx.clip();
-        ctx.drawImage(currentVideo, finalX, finalY, finalW, finalH);
+        ctx.drawImage(bgVideo, finalX, finalY, finalW, finalH);
 
-        // 오브젝트 시인성 확보용 반투명 딤(Dim) 필터
+        // 시인성 확보용 반투명 딤 필터
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
         ctx.fillRect(playArea.x, playArea.y, playArea.w, playArea.h);
         ctx.restore();
@@ -719,7 +717,7 @@
         ctx.shadowBlur = 0;
       }
 
-      // 9. 터치 가이드 라인
+      // 9. 하단 터치 가이드 라인
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
