@@ -23,10 +23,34 @@
       align-items: center;
       font-family: 'Courier New', Courier, monospace;
     }
-    #gameCanvas {
+    /* 게임 뷰포트 컨테이너 */
+    #gameContainer {
+      position: relative;
       background-color: #000;
-      display: block;
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
+    }
+    /* 배경 동영상 레이어: 플레이 영역 내부에 꽉 차게 배치 */
+    #bgVideo {
+      position: absolute;
+      /* 알카노이드 플레이 영역 좌표와 정확히 일치 (상단 프레임 36px, 좌우 프레임 12px 제외) */
+      top: 5.625%;   /* 36 / 640 */
+      left: 3.333%;  /* 12 / 360 */
+      width: 93.334%;/* 336 / 360 */
+      height: 94.375%;/* 604 / 640 */
+      object-fit: cover;
+      z-index: 1;
+      filter: brightness(0.55); /* 게임 오브젝트 시인성을 위한 딤 처리 */
+    }
+    /* 게임 캔버스: 비디오 위에 겹쳐지도록 설정 */
+    #gameCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      background: transparent;
     }
     .overlay {
       position: absolute;
@@ -50,17 +74,16 @@
       border-radius: 8px;
       cursor: pointer;
     }
-    #bgVideo {
-      display: none;
-    }
   </style>
 </head>
 <body>
 
-  <canvas id="gameCanvas"></canvas>
-
-  <!-- 단일 비디오 인스턴스 (bg1.mp4, bg2.mp4 순환용) -->
-  <video id="bgVideo" src="bg1.mp4" muted playsinline webkit-playsinline preload="auto"></video>
+  <div id="gameContainer">
+    <!-- 배경 동영상 (DOM 레이어로 직접 구동) -->
+    <video id="bgVideo" src="bg1.mp4" muted playsinline webkit-playsinline preload="auto"></video>
+    <!-- 게임 렌더링 캔버스 -->
+    <canvas id="gameCanvas"></canvas>
+  </div>
 
   <div class="overlay" id="startOverlay">
     <h1 style="color: #ff3333; margin-bottom: 4px;">ARKANOID FX</h1>
@@ -76,7 +99,7 @@
   </div>
 
   <script>
-    // --- 1. 색상별 맞춤 오디오 엔진 (Web Audio API) ---
+    // --- 1. 색상별 맞춤 오디오 엔진 ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -153,7 +176,8 @@
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 2. 캔버스 및 단일 비디오 안전 순환 엔진 ---
+    // --- 2. 캔버스 및 비디오 순환 핸들러 ---
+    const container = document.getElementById('gameContainer');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const startOverlay = document.getElementById('startOverlay');
@@ -165,38 +189,38 @@
     const videoList = ['bg1.mp4', 'bg2.mp4'];
     let videoIndex = 0;
 
-    // 영상 종료 시 다음 영상 소스로 교체 후 재생 (재생 권한 유지)
+    // 영상 전환 리스너
     bgVideo.addEventListener('ended', () => {
       videoIndex = (videoIndex + 1) % videoList.length;
       bgVideo.src = videoList[videoIndex];
       bgVideo.load();
-      bgVideo.play().catch(err => console.log("비디오 연속 재생 대기:", err));
+      bgVideo.play().catch(e => console.log(e));
     });
 
-    bgVideo.addEventListener('error', (e) => {
-      console.warn("비디오 로드 오류: 파일명(bg1.mp4, bg2.mp4) 및 H.264 코덱을 확인하세요.", e);
-    });
-
-    function startBgVideo() {
+    function playBackground() {
       if (bgVideo) {
         bgVideo.muted = true;
-        bgVideo.play().catch(err => {
-          console.log("모바일 자동재생 대기:", err);
-        });
+        bgVideo.play().catch(e => console.log("비디오 재생 시도 중:", e));
       }
     }
 
     const GAME_W = 360;
     const GAME_H = 640;
 
-    function resizeCanvas() {
+    function resizeContainer() {
       const scale = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
+      const w = Math.floor(GAME_W * scale);
+      const h = Math.floor(GAME_H * scale);
+
+      container.style.width = `${w}px`;
+      container.style.height = `${h}px`;
+
       canvas.width = GAME_W * scale;
       canvas.height = GAME_H * scale;
       ctx.imageSmoothingEnabled = true;
     }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    window.addEventListener('resize', resizeContainer);
+    resizeContainer();
 
     let score = 0;
     let lives = 3;
@@ -319,7 +343,7 @@
     function startGame() {
       initAudio();
       playStartWav();
-      startBgVideo();
+      playBackground(); // 사용자 탭 시점에 비디오 재생 구동
 
       score = 0;
       lives = 3;
@@ -546,50 +570,26 @@
       return b.baseColor;
     }
 
-    // --- 4. 렌더링 ---
+    // --- 4. 렌더링 (배경 비디오는 CSS 레이어로 투명 투과) ---
     function draw() {
+      // 캔버스 전체를 투명하게 클리어하여 뒤의 비디오가 보이게 함
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       const scale = canvas.width / GAME_W;
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 1. 배경 클리어 및 단일 비디오 렌더링
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, GAME_W, GAME_H);
-
-      const playArea = { x: 12, y: 36, w: GAME_W - 24, h: GAME_H - 36 };
-
-      if (bgVideo && bgVideo.readyState >= 2) {
-        const vw = bgVideo.videoWidth || 1;
-        const vh = bgVideo.videoHeight || 1;
-        const vScale = Math.max(playArea.w / vw, playArea.h / vh);
-        const finalW = vw * vScale;
-        const finalH = vh * vScale;
-        const finalX = playArea.x + (playArea.w - finalW) / 2;
-        const finalY = playArea.y + (playArea.h - finalH) / 2;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(playArea.x, playArea.y, playArea.w, playArea.h);
-        ctx.clip();
-        ctx.drawImage(bgVideo, finalX, finalY, finalW, finalH);
-
-        // 시인성 확보용 반투명 딤 필터
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-        ctx.fillRect(playArea.x, playArea.y, playArea.w, playArea.h);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#05050a';
-        ctx.fillRect(playArea.x, playArea.y, playArea.w, playArea.h);
-      }
-
-      // 2. 외곽 메탈 프레임
+      // 1. 외곽 메탈 프레임 (플레이 영역은 투명하게 비워둠)
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
       ctx.fillRect(0, 24, GAME_W, 12);
 
-      // 3. HUD
+      // 상단 점수 영역 블랙 바
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, GAME_W, 24);
+
+      // 2. HUD
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
@@ -598,20 +598,20 @@
 
       if (activeEffects.giantPierceTimer > 0) {
         ctx.fillStyle = '#ff3300';
-        ctx.fillText(`[COMET FIRE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 38);
+        ctx.fillText(`[COMET FIRE] ${(activeEffects.giantPierceTimer / 60).toFixed(1)}s`, 18, 48);
       } else if (activeEffects.expandTimer > 0) {
         ctx.fillStyle = '#39ff14';
-        ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 38);
+        ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 48);
       }
 
-      // 4. 벽돌
+      // 3. 벽돌
       for (let b of bricks) {
         if (b.hp <= 0) continue;
         if (b.type === 'GLASS') {
-          ctx.fillStyle = 'rgba(125, 249, 255, 0.55)';
+          ctx.fillStyle = 'rgba(125, 249, 255, 0.65)';
           ctx.fillRect(b.x, b.y, b.w, b.h);
 
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
           ctx.lineWidth = 1;
           ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
 
@@ -621,7 +621,7 @@
             ctx.beginPath();
             ctx.rect(b.x, b.y, b.w, b.h);
             ctx.clip();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
             ctx.beginPath();
             ctx.moveTo(b.x + sweep - 6, b.y + b.h);
             ctx.lineTo(b.x + sweep + 4, b.y);
@@ -640,7 +640,7 @@
         }
       }
 
-      // 5. 파티클
+      // 4. 파티클
       for (let p of particles) {
         ctx.save();
         ctx.translate(p.x, p.y);
@@ -655,7 +655,7 @@
         ctx.restore();
       }
 
-      // 6. 캡슐 아이템
+      // 5. 캡슐 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -670,13 +670,13 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      // 7. 패들
+      // 6. 패들
       ctx.fillStyle = activeEffects.expandTimer > 0 ? '#39ff14' : '#e52521';
       ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
-      // 8. 공
+      // 7. 공
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
       for (let ball of balls) {
@@ -717,8 +717,8 @@
         ctx.shadowBlur = 0;
       }
 
-      // 9. 하단 터치 가이드 라인
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      // 8. 터치 가이드 라인
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.moveTo(12, GAME_H - 105);
