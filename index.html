@@ -23,26 +23,29 @@
       align-items: center;
       font-family: 'Courier New', Courier, monospace;
     }
-    /* 게임 뷰포트 컨테이너 */
     #gameContainer {
       position: relative;
       background-color: #000;
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
       overflow: hidden;
     }
-    /* 배경 동영상 레이어: 플레이 영역 내부에 꽉 차게 배치 */
-    #bgVideo {
+    /* 유튜브 플레이어가 들어갈 백그라운드 래퍼 */
+    #ytPlayerWrapper {
       position: absolute;
-      /* 알카노이드 플레이 영역 좌표와 정확히 일치 (상단 프레임 36px, 좌우 프레임 12px 제외) */
       top: 5.625%;   /* 36 / 640 */
       left: 3.333%;  /* 12 / 360 */
       width: 93.334%;/* 336 / 360 */
       height: 94.375%;/* 604 / 640 */
-      object-fit: cover;
+      overflow: hidden;
       z-index: 1;
-      filter: brightness(0.55); /* 게임 오브젝트 시인성을 위한 딤 처리 */
+      pointer-events: none; /* 터치 이벤트가 캔버스로만 전달되도록 차단 */
     }
-    /* 게임 캔버스: 비디오 위에 겹쳐지도록 설정 */
+    #ytPlayer {
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      filter: brightness(0.55); /* 게임 시인성을 위한 딤 처리 */
+    }
     #gameCanvas {
       position: absolute;
       top: 0;
@@ -75,13 +78,17 @@
       cursor: pointer;
     }
   </style>
+  <!-- YouTube IFrame API 로드 -->
+  <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
 
   <div id="gameContainer">
-    <!-- 배경 동영상 (DOM 레이어로 직접 구동) -->
-    <video id="bgVideo" src="bg1.mp4" muted playsinline webkit-playsinline preload="auto"></video>
-    <!-- 게임 렌더링 캔버스 -->
+    <!-- 유튜브 영상 배경 레이어 -->
+    <div id="ytPlayerWrapper">
+      <div id="ytPlayer"></div>
+    </div>
+    <!-- 게임 플레이 캔버스 -->
     <canvas id="gameCanvas"></canvas>
   </div>
 
@@ -99,7 +106,41 @@
   </div>
 
   <script>
-    // --- 1. 색상별 맞춤 오디오 엔진 ---
+    // --- 1. 유튜브 플레이어 API 연동 ---
+    let player = null;
+    const VIDEO_ID = 'a3q2dPG3lVI';
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('ytPlayer', {
+        videoId: VIDEO_ID,
+        playerVars: {
+          autoplay: 1,
+          mute: 1,           // 음소거 (모바일 자동재생 필수)
+          controls: 0,       // 컨트롤러 숨김
+          showinfo: 0,
+          rel: 0,
+          loop: 1,
+          playlist: VIDEO_ID, // 무한 루프용 설정
+          playsinline: 1,    // 모바일 전체화면 방지
+          modestbranding: 1
+        },
+        events: {
+          onReady: (event) => {
+            event.target.mute();
+            event.target.playVideo();
+          }
+        }
+      });
+    }
+
+    function playBgYouTube() {
+      if (player && player.playVideo) {
+        player.mute();
+        player.playVideo();
+      }
+    }
+
+    // --- 2. 오디오 엔진 (Web Audio API) ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -176,7 +217,7 @@
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 2. 캔버스 및 비디오 순환 핸들러 ---
+    // --- 3. 캔버스 및 게임 설정 ---
     const container = document.getElementById('gameContainer');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -184,25 +225,6 @@
     const gameOverOverlay = document.getElementById('gameOverOverlay');
     const overTitle = document.getElementById('overTitle');
     const finalScore = document.getElementById('finalScore');
-    const bgVideo = document.getElementById('bgVideo');
-
-    const videoList = ['bg1.mp4', 'bg2.mp4'];
-    let videoIndex = 0;
-
-    // 영상 전환 리스너
-    bgVideo.addEventListener('ended', () => {
-      videoIndex = (videoIndex + 1) % videoList.length;
-      bgVideo.src = videoList[videoIndex];
-      bgVideo.load();
-      bgVideo.play().catch(e => console.log(e));
-    });
-
-    function playBackground() {
-      if (bgVideo) {
-        bgVideo.muted = true;
-        bgVideo.play().catch(e => console.log("비디오 재생 시도 중:", e));
-      }
-    }
 
     const GAME_W = 360;
     const GAME_H = 640;
@@ -343,7 +365,7 @@
     function startGame() {
       initAudio();
       playStartWav();
-      playBackground(); // 사용자 탭 시점에 비디오 재생 구동
+      playBgYouTube();
 
       score = 0;
       lives = 3;
@@ -408,7 +430,7 @@
       }
     }
 
-    // --- 3. 물리 및 파티클 업데이트 ---
+    // --- 4. 물리 업데이트 ---
     function update() {
       frameCount++;
       if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
@@ -570,26 +592,25 @@
       return b.baseColor;
     }
 
-    // --- 4. 렌더링 (배경 비디오는 CSS 레이어로 투명 투과) ---
+    // --- 5. 렌더링 ---
     function draw() {
-      // 캔버스 전체를 투명하게 클리어하여 뒤의 비디오가 보이게 함
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const scale = canvas.width / GAME_W;
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 1. 외곽 메탈 프레임 (플레이 영역은 투명하게 비워둠)
+      // 외곽 메탈 프레임
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
       ctx.fillRect(0, 24, GAME_W, 12);
 
-      // 상단 점수 영역 블랙 바
+      // 상단 바
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, 24);
 
-      // 2. HUD
+      // HUD
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px Courier New';
       ctx.fillText(`SCORE: ${score}`, 18, 18);
@@ -604,7 +625,7 @@
         ctx.fillText(`[EXPAND] ${(activeEffects.expandTimer / 60).toFixed(1)}s`, 18, 48);
       }
 
-      // 3. 벽돌
+      // 벽돌
       for (let b of bricks) {
         if (b.hp <= 0) continue;
         if (b.type === 'GLASS') {
@@ -640,7 +661,7 @@
         }
       }
 
-      // 4. 파티클
+      // 파티클
       for (let p of particles) {
         ctx.save();
         ctx.translate(p.x, p.y);
@@ -655,7 +676,7 @@
         ctx.restore();
       }
 
-      // 5. 캡슐 아이템
+      // 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -670,13 +691,13 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      // 6. 패들
+      // 패들
       ctx.fillStyle = activeEffects.expandTimer > 0 ? '#39ff14' : '#e52521';
       ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(paddle.x + 8, paddle.y + 2, paddle.w - 16, paddle.h - 4);
 
-      // 7. 공
+      // 공
       const isGiant = activeEffects.giantPierceTimer > 0;
       const r = isGiant ? BASE_BALL_R * 2.8 : BASE_BALL_R;
       for (let ball of balls) {
@@ -717,7 +738,7 @@
         ctx.shadowBlur = 0;
       }
 
-      // 8. 터치 가이드 라인
+      // 터치 가이드 라인
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
