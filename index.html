@@ -29,22 +29,20 @@
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
       overflow: hidden;
     }
-    /* 유튜브 영상 레이어: 빈 공간은 순수 Black(#000000)으로 채움 */
     #ytPlayerWrapper {
       position: absolute;
-      top: 5.625%;    /* 36 / 640 */
-      left: 3.333%;   /* 12 / 360 */
-      width: 93.334%; /* 336 / 360 */
-      height: 94.375%;/* 604 / 640 */
+      top: 5.625%;
+      left: 3.333%;
+      width: 93.334%;
+      height: 94.375%;
       background-color: #000000;
       display: flex;
       justify-content: center;
       align-items: center;
       overflow: hidden;
       z-index: 1;
-      pointer-events: none; /* 터치가 게임 캔버스로만 가도록 차단 */
+      pointer-events: none;
     }
-    /* 16:9 비율 유지 (영상 잘림 없음) */
     #ytBox {
       position: relative;
       width: 100%;
@@ -59,7 +57,7 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
-      filter: brightness(0.68) contrast(1.05); /* 게임 오브젝트 시인성 확보 */
+      filter: brightness(0.68) contrast(1.05);
     }
     #gameCanvas {
       position: absolute;
@@ -98,7 +96,6 @@
 <body>
 
   <div id="gameContainer">
-    <!-- 유튜브 라이브 영상 배경 (레터박스 Black) -->
     <div id="ytPlayerWrapper">
       <div id="ytBox">
         <div id="ytPlayer"></div>
@@ -121,22 +118,22 @@
   </div>
 
   <script>
-    // --- 1. 유튜브 플레이어 컨트롤러 ---
+    // --- 1. 유튜브 플레이어 컨트롤러 (소리 활성화) ---
     let ytPlayer = null;
-    const TARGET_VIDEO_ID = 'a3q2dPG3lVI'; // 홍대거리 라이브 비디오 ID
+    const TARGET_VIDEO_ID = 'a3q2dPG3lVI';
 
     function onYouTubeIframeAPIReady() {
       ytPlayer = new YT.Player('ytPlayer', {
         videoId: TARGET_VIDEO_ID,
         playerVars: {
           autoplay: 1,
-          mute: 1,            // 모바일 자동재생 정책 필수 음소거
-          controls: 0,        // 플레이어 UI 숨김
+          mute: 1,            // 최초 로딩 시에는 브라우저 정책 준수용 음소거
+          controls: 0,
           disablekb: 1,
           fs: 0,
           rel: 0,
           modestbranding: 1,
-          playsinline: 1,     // 모바일 인라인 재생
+          playsinline: 1,
           loop: 1,
           playlist: TARGET_VIDEO_ID
         },
@@ -149,9 +146,11 @@
       });
     }
 
-    function ensureYouTubePlay() {
+    // 터치 시점에 사운드 언락 및 볼륨 설정
+    function activateYouTubeAudio() {
       if (ytPlayer && ytPlayer.playVideo) {
-        ytPlayer.mute();
+        ytPlayer.unMute();       // 음소거 해제
+        ytPlayer.setVolume(70);  // 효과음과 조화를 이루는 최적 볼륨 (0~100)
         ytPlayer.playVideo();
       }
     }
@@ -178,7 +177,7 @@
       } catch (e) {}
     }
 
-    function playTone(freq, type, duration, endFreq = null, vol = 0.15) {
+    function playTone(freq, type, duration, endFreq = null, vol = 0.2) {
       if (!audioCtx) return;
       try {
         const osc = audioCtx.createOscillator();
@@ -205,38 +204,38 @@
     const sound = {
       hitBrickByType: (type, isDestroyed) => {
         if (type === 'GOLD') {
-          playTone(220, 'square', 0.12, isDestroyed ? 90 : 160, 0.22);
+          playTone(220, 'square', 0.12, isDestroyed ? 90 : 160, 0.25);
         } else if (type === 'SILVER') {
-          playTone(340, 'triangle', 0.1, isDestroyed ? 140 : 260, 0.2);
+          playTone(340, 'triangle', 0.1, isDestroyed ? 140 : 260, 0.22);
         } else if (type === 'GLASS') {
-          playTone(1050, 'sine', 0.18, 1400, 0.25);
-          setTimeout(() => playTone(1580, 'sine', 0.12, 1900, 0.18), 30);
+          playTone(1050, 'sine', 0.18, 1400, 0.28);
+          setTimeout(() => playTone(1580, 'sine', 0.12, 1900, 0.2), 30);
         } else if (type === 'RED') {
-          playTone(440, 'square', 0.08, 520, 0.15);
+          playTone(440, 'square', 0.08, 520, 0.18);
         } else if (type === 'ORANGE') {
-          playTone(494, 'square', 0.08, 580, 0.15);
+          playTone(494, 'square', 0.08, 580, 0.18);
         } else if (type === 'YELLOW') {
-          playTone(554, 'square', 0.08, 660, 0.15);
+          playTone(554, 'square', 0.08, 660, 0.18);
         } else if (type === 'GREEN') {
-          playTone(659, 'square', 0.08, 780, 0.15);
+          playTone(659, 'square', 0.08, 780, 0.18);
         } else {
-          playTone(740, 'square', 0.08, 880, 0.15);
+          playTone(740, 'square', 0.08, 880, 0.18);
         }
       },
-      hitPaddle: () => playTone(220, 'triangle', 0.12, 110, 0.2),
-      hitWall: () => playTone(440, 'sine', 0.04, null, 0.08),
+      hitPaddle: () => playTone(220, 'triangle', 0.12, 110, 0.25),
+      hitWall: () => playTone(440, 'sine', 0.04, null, 0.1),
       powerUp: () => {
-        playTone(400, 'square', 0.08, null, 0.2);
-        setTimeout(() => playTone(600, 'square', 0.08, null, 0.2), 70);
-        setTimeout(() => playTone(800, 'square', 0.14, null, 0.2), 140);
+        playTone(400, 'square', 0.08, null, 0.25);
+        setTimeout(() => playTone(600, 'square', 0.08, null, 0.25), 70);
+        setTimeout(() => playTone(800, 'square', 0.14, null, 0.25), 140);
       },
       stageClear: () => {
-        playTone(523, 'triangle', 0.1, null, 0.2);
-        setTimeout(() => playTone(659, 'triangle', 0.1, null, 0.2), 100);
-        setTimeout(() => playTone(784, 'triangle', 0.15, null, 0.2), 200);
-        setTimeout(() => playTone(1046, 'triangle', 0.3, null, 0.25), 300);
+        playTone(523, 'triangle', 0.1, null, 0.25);
+        setTimeout(() => playTone(659, 'triangle', 0.1, null, 0.25), 100);
+        setTimeout(() => playTone(784, 'triangle', 0.15, null, 0.25), 200);
+        setTimeout(() => playTone(1046, 'triangle', 0.3, null, 0.3), 300);
       },
-      loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
+      loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.3)
     };
 
     // --- 3. 캔버스 및 10개 스테이지 맵 데이터 ---
@@ -309,8 +308,6 @@
 
     let bricks = [];
 
-    // [10개 고유 스테이지 맵 데이터]
-    // 0:빈칸, 1:빨강, 2:주황, 3:노랑, 4:초록, 5:파랑, S:실버(2방), G:골드(3방), C:크리스탈(유리)
     const STAGE_MAPS = [
       // 1: 기본 벽돌
       [
@@ -513,7 +510,7 @@
     function startGame() {
       initAudio();
       playStartWav();
-      ensureYouTubePlay();
+      activateYouTubeAudio(); // 터치 시 유튜브 소리 음소거 해제 및 재생
 
       score = 0;
       lives = 3;
@@ -767,7 +764,6 @@
         if (it.y > GAME_H) items.splice(i, 1);
       }
 
-      // 스테이지 내 모든 벽돌 파괴 시 전환
       if (bricks.every(b => b.hp <= 0)) {
         nextStageTransition();
       }
