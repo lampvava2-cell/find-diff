@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>알카노이드 FX</title>
+  <title>알카노이드 FX - 홍대 라이브 배경</title>
   <style>
     * {
       box-sizing: border-box;
@@ -23,29 +23,37 @@
       align-items: center;
       font-family: 'Courier New', Courier, monospace;
     }
+    /* 게임 뷰포트 컨테이너 (360x640 비율 고정) */
     #gameContainer {
       position: relative;
       background-color: #000;
       box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
       overflow: hidden;
     }
-    /* 유튜브 플레이어가 들어갈 백그라운드 래퍼 */
+    /* 유튜브 iframe 배경 래퍼 (플레이 영역 안쪽에 정확히 투영) */
     #ytPlayerWrapper {
       position: absolute;
-      top: 5.625%;   /* 36 / 640 */
-      left: 3.333%;  /* 12 / 360 */
-      width: 93.334%;/* 336 / 360 */
-      height: 94.375%;/* 604 / 640 */
+      top: 5.625%;    /* 프레임 제외 상단 36px / 640 */
+      left: 3.333%;   /* 프레임 제외 좌측 12px / 360 */
+      width: 93.334%; /* 프레임 제외 336px / 360 */
+      height: 94.375%;/* 프레임 제외 604px / 640 */
       overflow: hidden;
       z-index: 1;
-      pointer-events: none; /* 터치 이벤트가 캔버스로만 전달되도록 차단 */
+      pointer-events: none; /* 터치 조작 방해 금지 */
     }
+    /* 16:9 유튜브 영상을 세로 프레임에 꽉 차게 확대 배치 */
     #ytPlayer {
-      width: 100%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 177.77vh; /* 16:9 비율 유지 */
+      min-width: 100%;
       height: 100%;
+      transform: translate(-50%, -50%) scale(1.6); /* 세로 화면 꽉 차도록 스케일 업 */
       pointer-events: none;
-      filter: brightness(0.55); /* 게임 시인성을 위한 딤 처리 */
+      filter: brightness(0.52) contrast(1.1); /* 게임 블록 시인성 확보를 위한 딤 필터 */
     }
+    /* 게임 그래픽 캔버스 */
     #gameCanvas {
       position: absolute;
       top: 0;
@@ -58,7 +66,7 @@
     .overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.82);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -78,17 +86,17 @@
       cursor: pointer;
     }
   </style>
-  <!-- YouTube IFrame API 로드 -->
+  <!-- YouTube IFrame API -->
   <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
 
   <div id="gameContainer">
-    <!-- 유튜브 영상 배경 레이어 -->
+    <!-- 백그라운드 유튜브 영상 레이어 -->
     <div id="ytPlayerWrapper">
       <div id="ytPlayer"></div>
     </div>
-    <!-- 게임 플레이 캔버스 -->
+    <!-- 전면 게임 캔버스 -->
     <canvas id="gameCanvas"></canvas>
   </div>
 
@@ -106,41 +114,42 @@
   </div>
 
   <script>
-    // --- 1. 유튜브 플레이어 API 연동 ---
-    let player = null;
-    const VIDEO_ID = 'a3q2dPG3lVI';
+    // --- 1. 유튜브 IFrame 플레이어 컨트롤 ---
+    let ytPlayer = null;
+    const TARGET_VIDEO_ID = 'a3q2dPG3lVI'; // 홍대거리 라이브 비디오 ID
 
     function onYouTubeIframeAPIReady() {
-      player = new YT.Player('ytPlayer', {
-        videoId: VIDEO_ID,
+      ytPlayer = new YT.Player('ytPlayer', {
+        videoId: TARGET_VIDEO_ID,
         playerVars: {
           autoplay: 1,
-          mute: 1,           // 음소거 (모바일 자동재생 필수)
-          controls: 0,       // 컨트롤러 숨김
-          showinfo: 0,
+          mute: 1,            // 모바일 자동재생을 위한 필수 음소거
+          controls: 0,        // 조작 컨트롤러 숨김
+          disablekb: 1,
+          fs: 0,
           rel: 0,
+          modestbranding: 1,
+          playsinline: 1,     // 모바일 전체화면 강제 전환 방지
           loop: 1,
-          playlist: VIDEO_ID, // 무한 루프용 설정
-          playsinline: 1,    // 모바일 전체화면 방지
-          modestbranding: 1
+          playlist: TARGET_VIDEO_ID
         },
         events: {
-          onReady: (event) => {
-            event.target.mute();
-            event.target.playVideo();
+          onReady: (e) => {
+            e.target.mute();
+            e.target.playVideo();
           }
         }
       });
     }
 
-    function playBgYouTube() {
-      if (player && player.playVideo) {
-        player.mute();
-        player.playVideo();
+    function ensureYouTubePlay() {
+      if (ytPlayer && ytPlayer.playVideo) {
+        ytPlayer.mute();
+        ytPlayer.playVideo();
       }
     }
 
-    // --- 2. 오디오 엔진 (Web Audio API) ---
+    // --- 2. 오디오 FX 엔진 (Web Audio API) ---
     let audioCtx = null;
     const startAudio = new Audio('start.wav');
     startAudio.preload = 'auto';
@@ -217,7 +226,7 @@
       loseLife: () => playTone(250, 'sawtooth', 0.35, 40, 0.25)
     };
 
-    // --- 3. 캔버스 및 게임 설정 ---
+    // --- 3. 캔버스 및 반응형 세팅 ---
     const container = document.getElementById('gameContainer');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -365,7 +374,7 @@
     function startGame() {
       initAudio();
       playStartWav();
-      playBgYouTube();
+      ensureYouTubePlay(); // 터치 시점에 유튜브 비디오 강제 언락/재생
 
       score = 0;
       lives = 3;
@@ -430,7 +439,7 @@
       }
     }
 
-    // --- 4. 물리 업데이트 ---
+    // --- 4. 물리 및 게임 판정 ---
     function update() {
       frameCount++;
       if (activeEffects.giantPierceTimer > 0) activeEffects.giantPierceTimer--;
@@ -592,7 +601,7 @@
       return b.baseColor;
     }
 
-    // --- 5. 렌더링 ---
+    // --- 5. 렌더링 (배경 비디오 투과) ---
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -600,13 +609,13 @@
       ctx.save();
       ctx.scale(scale, scale);
 
-      // 외곽 메탈 프레임
+      // 상단/측면 메탈 프레임 (플레이 영역은 투명하게 비워 유튜브 영상 노출)
       ctx.fillStyle = '#7a7a85';
       ctx.fillRect(0, 36, 12, GAME_H);
       ctx.fillRect(GAME_W - 12, 36, 12, GAME_H);
       ctx.fillRect(0, 24, GAME_W, 12);
 
-      // 상단 바
+      // 상단 점수 바 배경
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, GAME_W, 24);
 
@@ -676,7 +685,7 @@
         ctx.restore();
       }
 
-      // 아이템
+      // 캡슐 아이템
       for (let it of items) {
         ctx.fillStyle = it.color;
         ctx.beginPath();
@@ -738,7 +747,7 @@
         ctx.shadowBlur = 0;
       }
 
-      // 터치 가이드 라인
+      // 하단 터치 가이드 라인
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
